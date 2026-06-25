@@ -1,0 +1,61 @@
+name: cc_ride_mobile
+description: CC Ride — Corporate Ride-Hailing Mobile App
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.5.4
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+
+  # HTTP & networking
+  dio: ^5.7.0
+  socket_io_client: ^2.0.3+1
+
+  # State management
+  provider: ^6.1.2
+
+  # Navigation
+  go_router: ^14.6.1
+
+  # Storage
+  shared_preferences: ^2.3.3
+  flutter_secure_storage: ^9.2.2
+
+  # Maps (OpenStreetMap — no API key needed)
+  flutter_map: ^7.0.2
+  latlong2: ^0.9.1
+
+  # UI helpers
+  cached_network_image: ^3.4.1
+  shimmer: ^3.0.0
+  intl: ^0.19.0
+  pinput: ^5.0.0
+
+  # Location
+  geolocator: ^13.0.2
+  geocoding: ^3.0.0
+
+  # Image picker
+  image_picker: ^1.1.2
+
+  # Misc
+  url_launcher: ^6.3.1
+  timeago: ^3.7.0
+  flutter_svg: ^2.0.10+1
+  permission_handler: ^11.3.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
+    - assets/icons/
