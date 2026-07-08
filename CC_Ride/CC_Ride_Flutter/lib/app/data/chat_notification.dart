@@ -12,36 +12,15 @@ import 'package:googleapis_auth/auth_io.dart';
 class FirebaseAccesstoken {
   static String firebaseMessageScope = "https://www.googleapis.com/auth/firebase.messaging";
 
+  // A Firebase service account private key used to live here, hardcoded in
+  // client source — that leaked full FCM-send authority to anyone who
+  // decompiled the APK, and was caught by GitHub push protection.
+  // TODO: move chat push notifications through the backend (which can hold
+  // this credential server-side) instead of minting an FCM access token
+  // on-device. Returning empty for now so this fails the same way it
+  // already did on any other error, without shipping a live secret.
   Future<String> getAccessToken() async {
-    final credentials = ServiceAccountCredentials.fromJson(
-      {
-        "type": "service_account",
-        "project_id": "project-2025-fe5ee",
-        "private_key_id": "325b5b48403de1ac153f144d8c7b949916ba3788",
-        "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQC+01APT7jkzCka\n5ckTeNkRmckr7Io2jYBc523waYxhtQF2InTnBQ1epCdmPdoajJWI+rz6A5Pizbzz\neKE+lzACuBvurtvCA1R1WwuMdvE8QErok80GhBn+c+VXRyH2eDNkd78pJNK3SjJp\no+EF4PetCLOHKhFmXbHIW8C/FDimih+oJUpd9XltGXxyJdSmf6fMhZonC4EnxxDw\nbDN4SrMi24WweVE6cQIQiD1Gi+5u5clSQWEcVMDFYlGXgaEpjSpS0aBaN7d5N5yE\n9XSGvhE7uUcfTJ90AOV2CrMw7fASn8n+51Ge0rldN6+6/pUyAXjmytmxVHiu3gjK\nIrbGucaZAgMBAAECggEADkAtKSuQuQN3KWNSMCJVAZ+8uotEah0IokeFOhBD09Mm\n7AnYNZ12uWPkbln9pQBtNWjWPoyQWX54Vy1hy1ESnI1fxqQn1LYXc1kshF2ol9GM\nVpCdHdi1MT+595ngEy44Vk8sBzhRBS+lEqcSqbP6gyFUeOpfGMgz++zAOPTbYzJp\n9TMVjFtySKIzFd/ldIJ90cC2kA5+bORhb61MVFRzI9qiueNdn14bmFNXna19JGU/\ngu8yTnyg2BvQyGRyeku81sKlSXaA+QJLzlN6cnpTl88k+XfZUvR2W7RG8TCDzLC2\n+xToJafd0zn++qgd5STc2ge1P0GxTqXbhE2E7AqDgQKBgQDgbQPwzdbzrXlWEYPx\nNfd8drOtl19ilEgoK69ZoYRK/euDXPXGhYydbzLUXS9vyoYHn8WsU7AXZN6ll7Cn\nD4ZwuLOlnxbSeKmNeM6+l6JGh0aYGMoYWpOI0u35y58nU+qlfkDKjD7iC9l5DzcA\ndXmNhKsXASag22Hce6SudB4/QQKBgQDZrCLDIhffR5Vjtz1Mno0YUnvZxOdy4wLt\nG17r7iQuMv5WOWh/uSFHkIHi44YPu5CGJmjCOt7VxcwObcc6h8DqTJzzT5Wr8swh\nPmBj5NebXFAEFSbb2INhJyb+pqdTgLX4dU5Qb3WsqD66PU3ByN/zfxKNPwEoN1RB\nOII7PVyJWQKBgAViGAoapeFKc/KgkO2kQb92iXDMhLk0nVZ5VcdsnGPAG3oXLL4K\nTgkotatqYMzpqrVcG726dCrbfIu0S8R2Ft91TrnWSxHZWxfNogfoUzgl3oefcJmM\n8qUBijvHqpWi6an2kU9KdeeuKRVCTCtypevDFueCW47YNEy5moWku2UBAoGBAJ0M\nKPiIvJiH2SzcpAmHy1zlBh6UhjjJuO7BdLbcVpZOjFpBiTe9plkv1caRScRIG3nu\ndF7Ogr/RuewfIEMGdxWUuRiDLwWkY8sIahsonLam38RSTnsHt6J80RGhw8/naWMd\nn6dBA7HSoY9Vc6iA+bOA1y25a2hMoyl7T9rV5tHhAoGBAIEB99anVMUWtsToGKBH\n8KwaI0JPbKIXp1COdf2kR919qGVnQrB+7cJyPGQY5zBTl+Yoyf/ilOyQUX0ah8tk\n9LRmf//M5JIwasCd8S7JxXuS8IxTc+IHotKazEczAkHzugeLXsnEAe+b9umjeOiQ\ngAfQaUYMvrIC3tAQOib2cbrl\n-----END PRIVATE KEY-----\n",
-        "client_email": "firebase-adminsdk-fbsvc@project-2025-fe5ee.iam.gserviceaccount.com",
-        "client_id": "109993506953802403949",
-        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-        "token_uri": "https://oauth2.googleapis.com/token",
-        "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-        "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-fbsvc%40project-2025-fe5ee.iam.gserviceaccount.com",
-        "universe_domain": "googleapis.com"
-      }
-    );
-    debugPrint("+++++++++++++++++1:---- $credentials");
-    try{
-      final client = await clientViaServiceAccount(credentials, [firebaseMessageScope]);
-      debugPrint("+++++++++++++++++2:---- ${client.credentials.accessToken.data}");
-
-      final accessToken = client.credentials.accessToken.data;
-      Confing.firebaseKey = accessToken;
-      debugPrint("+++++++++++++++++3:---- ${Confing.firebaseKey}");
-      return accessToken;
-
-    }catch(e){
-      debugPrint("Error --${e.toString()}");
-      return "";
-    }
+    return "";
   }
 }
 
