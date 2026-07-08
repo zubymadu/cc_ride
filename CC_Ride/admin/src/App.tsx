@@ -14,6 +14,7 @@ import Billing from './pages/Billing'
 import Payments from './pages/Payments'
 import Support from './pages/Support'
 import Settings from './pages/Settings'
+import Download from './pages/Download'
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.token)
@@ -26,6 +27,7 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/download" element={<Download />} />
         <Route
           path="/"
           element={

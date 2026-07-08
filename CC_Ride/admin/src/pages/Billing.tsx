@@ -2,7 +2,7 @@
  * Billing — Corporate invoice list and drill-down by company/month
  * Uses /admin/billing/invoices and /admin/billing/invoices/:companyId/:month
  */
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   FileText, ChevronRight, ChevronDown, Download, Loader2,
@@ -189,8 +189,8 @@ export default function Billing() {
                 const key     = `${inv.company_id}__${inv.month}`
                 const isOpen  = expanded === key
                 return (
-                  <>
-                    <tr key={inv.id}
+                  <Fragment key={inv.id}>
+                    <tr
                       className="hover:bg-surface-low transition-colors cursor-pointer"
                       onClick={() => setExpanded(isOpen ? null : key)}>
                       <td className="td">
@@ -226,7 +226,7 @@ export default function Billing() {
 
                     {/* ── Expanded detail row ── */}
                     {isOpen && (
-                      <tr key={`${inv.id}-detail`}>
+                      <tr>
                         <td colSpan={8} className="p-0 bg-surface-low border-b border-surface-border">
                           {detailLoading ? (
                             <div className="flex justify-center py-8">
@@ -305,7 +305,7 @@ export default function Billing() {
                         </td>
                       </tr>
                     )}
-                  </>
+                  </Fragment>
                 )
               })
             )}

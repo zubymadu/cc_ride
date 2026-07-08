@@ -20,6 +20,13 @@ import { getAnalytics, getCompanyAnalytics }         from '../../controllers/adm
 import { listInvoices, getInvoiceDetail }            from '../../controllers/admin/billing.controller'
 import { listTickets, replyToTicket, resolveTicket } from '../../controllers/admin/support.controller'
 import { getSettings, updateSettings }              from '../../controllers/admin/settings.controller'
+import { creditCompany, getCompanyCreditLedger }    from '../../controllers/admin/company-credit.controller'
+import {
+  listRegions, createRegion,
+  listBranches, createBranch, updateBranch,
+  creditBranch, getBranchCreditLedger,
+  listBranchAdmins, createBranchAdmin,
+} from '../../controllers/admin/branches.controller'
 
 const router = Router()
 
@@ -58,6 +65,20 @@ router.get('/companies/:id/departments',        listDepartments)        // NEW
 router.post('/companies/:id/departments',       createDepartment)       // NEW
 router.get('/companies/:id/cost-centres',       listCostCentres)        // NEW
 router.post('/companies/:id/cost-centres',      createCostCentre)       // NEW
+router.post('/companies/:id/credit',            creditCompany)
+router.get('/companies/:id/credits',            getCompanyCreditLedger)
+// Regions
+router.get('/companies/:companyId/regions',     listRegions)
+router.post('/companies/:companyId/regions',    createRegion)
+// Branches
+router.get('/companies/:companyId/branches',          listBranches)
+router.post('/companies/:companyId/branches',         createBranch)
+router.patch('/companies/:companyId/branches/:branchId', updateBranch)
+router.post('/branches/:branchId/credit',             creditBranch)
+router.get('/branches/:branchId/credits',             getBranchCreditLedger)
+// Branch / company admin users
+router.get('/companies/:companyId/admins',            listBranchAdmins)
+router.post('/companies/:companyId/admins',           createBranchAdmin)
 
 // Rides (cancel)
 router.post('/rides/cancel',                    cancelRide)

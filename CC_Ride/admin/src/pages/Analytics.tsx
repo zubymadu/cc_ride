@@ -17,16 +17,15 @@ import { fmt } from '../lib/utils'
 import PageHeader from '../components/PageHeader'
 
 interface AnalyticsData {
-  monthly: {
-    month:       string   // YYYY-MM
-    month_label: string   // e.g. "Jan 2025"
-    gmv:         number
-    rides:       number
-    drivers:     number
+  monthly_trend: {
+    month: string   // e.g. "Jun 26"
+    gmv:   number
+    rides: number
   }[]
   top_companies: {
     company_id:   string
     company_name: string
+    industry:     string
     gmv:          number
     rides:        number
   }[]
@@ -34,14 +33,12 @@ interface AnalyticsData {
     status: string
     count:  number
   }[]
-  summary: {
-    total_gmv:        number
-    total_rides:      number
-    corporate_rides:  number
-    personal_rides:   number
-    avg_fare:         number
-    active_drivers:   number
-  }
+  avg_fare:          number
+  active_users:      number
+  active_drivers:    number
+  pending_approvals: number
+  corporate_rides:   number
+  personal_rides:    number
 }
 
 const COLORS = ['#1565C0', '#004D99', '#42A5F5', '#90CAF9', '#E3F2FD', '#FF7043']
@@ -99,7 +96,7 @@ export default function Analytics() {
     staleTime: 5 * 60 * 1000,
   })
 
-  const { data: companyDetail } = useQuery<{ departments?: { department: string; gmv: number }[]; recent_bookings?: unknown[] }>({
+  const { data: companyDetail } = useQuery<{ department_breakdown?: { department_name: string; gmv: number; rides: number }[]; recent_bookings?: unknown[] }>({
     queryKey: ['admin-analytics-company', selectedCompany],
     queryFn:  () => get(`/admin/analytics/company/${selectedCompany}`),
     enabled:  !!selectedCompany,
@@ -107,9 +104,9 @@ export default function Analytics() {
 
   function exportCSV() {
     if (!data) return
-    const headers = ['Month','GMV (₦)','Rides','Drivers']
-    const lines = data.monthly.map((r) =>
-      [r.month_label, r.gmv, r.rides, r.drivers].join(',')
+    const headers = ['Month','GMV (₦)','Rides']
+    const lines = data.monthly_trend.map((r) =>
+      [r.month, r.gmv, r.rides].join(',')
     )
     const csv = [headers.join(','), ...lines].join('\n')
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
@@ -128,13 +125,15 @@ export default function Analytics() {
     )
   }
 
-  const s = data?.summary
-  const corpPct = s ? (s.corporate_rides / (s.total_rides || 1)) * 100 : 0
-  const persPct = 100 - corpPct
+  // Derive summary figures from the trend + flat fields
+  const totalGmv   = (data?.monthly_trend ?? []).reduce((a, m) => a + m.gmv, 0)
+  const totalRides = (data?.monthly_trend ?? []).reduce((a, m) => a + m.rides, 0)
+  const monthRides = (data?.corporate_rides ?? 0) + (data?.personal_rides ?? 0)
+  const corpPct    = monthRides > 0 ? ((data?.corporate_rides ?? 0) / monthRides) * 100 : 0
 
   const splitData = [
-    { name: 'Corporate', value: s?.corporate_rides ?? 0, color: '#1565C0' },
-    { name: 'Personal',  value: s?.personal_rides  ?? 0, color: '#90CAF9' },
+    { name: 'Corporate', value: data?.corporate_rides ?? 0, color: '#1565C0' },
+    { name: 'Personal',  value: data?.personal_rides  ?? 0, color: '#90CAF9' },
   ]
 
   return (
@@ -151,10 +150,10 @@ export default function Analytics() {
 
       {/* Summary tiles */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatTile label="Total GMV"       value={fmt.naira(s?.total_gmv ?? 0)}        icon={DollarSign} color="bg-brand-50 text-brand-600" />
-        <StatTile label="Total Rides"     value={(s?.total_rides ?? 0).toLocaleString()} icon={Car}       color="bg-emerald-50 text-emerald-600" />
-        <StatTile label="Avg Fare"        value={fmt.naira(s?.avg_fare ?? 0)}          icon={TrendingUp} color="bg-amber-50 text-amber-600" />
-        <StatTile label="Active Drivers"  value={(s?.active_drivers ?? 0).toLocaleString()} icon={Users} color="bg-violet-50 text-violet-600" />
+        <StatTile label="Total GMV (6 mo)" value={fmt.naira(totalGmv)}           sub={`${totalRides.toLocaleString()} rides`} icon={DollarSign} color="bg-brand-50 text-brand-600" />
+        <StatTile label="Total Rides"      value={totalRides.toLocaleString()}    icon={Car}        color="bg-emerald-50 text-emerald-600" />
+        <StatTile label="Avg Fare"         value={fmt.naira(data?.avg_fare ?? 0)} icon={TrendingUp} color="bg-amber-50 text-amber-600" />
+        <StatTile label="Active Drivers"   value={(data?.active_drivers ?? 0).toLocaleString()} icon={Users} color="bg-violet-50 text-violet-600" />
       </div>
 
       {/* Monthly GMV trend */}
@@ -167,7 +166,7 @@ export default function Analytics() {
           <BarChart2 className="w-4 h-4 text-ink-ghost" />
         </div>
         <ResponsiveContainer width="100%" height={240}>
-          <AreaChart data={data?.monthly ?? []} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+          <AreaChart data={data?.monthly_trend ?? []} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
             <defs>
               <linearGradient id="gmvGrad" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%"  stopColor="#1565C0" stopOpacity={0.15} />
@@ -175,7 +174,7 @@ export default function Analytics() {
               </linearGradient>
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="#DFE3E8" />
-            <XAxis dataKey="month_label" tick={{ fontSize: 11, fill: '#727783' }} tickLine={false} />
+            <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#727783' }} tickLine={false} />
             <YAxis
               yAxisId="gmv" orientation="left"
               tickFormatter={(v) => `₦${(v / 1000).toFixed(0)}k`}
@@ -282,7 +281,7 @@ export default function Analytics() {
                     </div>
                     <div className="h-1.5 bg-surface-mid rounded-full overflow-hidden">
                       <div className="h-full rounded-full"
-                        style={{ width: `${(d.value / (s?.total_rides || 1)) * 100}%`, background: d.color }} />
+                        style={{ width: `${(d.value / (monthRides || 1)) * 100}%`, background: d.color }} />
                     </div>
                   </div>
                 ))}
@@ -299,7 +298,7 @@ export default function Analytics() {
             <p className="text-sm font-semibold text-ink mb-4">Rides by Status</p>
             <div className="space-y-2">
               {(data?.status_breakdown ?? []).map((s) => {
-                const total = data?.summary.total_rides || 1
+                const total = (data?.status_breakdown ?? []).reduce((a, x) => a + x.count, 0) || 1
                 const pct   = (s.count / total) * 100
                 const color = STATUS_COLORS[s.status] ?? '#9CA3AF'
                 return (
@@ -333,11 +332,11 @@ export default function Analytics() {
             </div>
             <button onClick={() => setSelectedCompany(null)} className="text-xs text-ink-subtle hover:text-ink">✕ Close</button>
           </div>
-          {companyDetail?.departments?.length ? (
+          {companyDetail?.department_breakdown?.length ? (
             <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={companyDetail?.departments} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+              <BarChart data={companyDetail?.department_breakdown} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#DFE3E8" />
-                <XAxis dataKey="department" tick={{ fontSize: 11, fill: '#727783' }} tickLine={false} />
+                <XAxis dataKey="department_name" tick={{ fontSize: 11, fill: '#727783' }} tickLine={false} />
                 <YAxis tickFormatter={(v) => `₦${(v/1000).toFixed(0)}k`}
                   tick={{ fontSize: 11, fill: '#727783' }} tickLine={false} axisLine={false} />
                 <Tooltip content={<CustomTooltip />} />

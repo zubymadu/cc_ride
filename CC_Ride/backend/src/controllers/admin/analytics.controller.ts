@@ -19,15 +19,21 @@ export async function getAnalytics(_req: Request, res: Response) {
       _count: { id: true },
     })
 
-    // Aggregate by month label
-    const monthMap: Record<string, { gmv: number; rides: number }> = {}
+    // Aggregate by month, keyed on sortable YYYY-MM so the trend is chronological
+    const monthMap: Record<string, { label: string; gmv: number; rides: number }> = {}
     monthlyRaw.forEach((r) => {
-      const label = r.createdAt.toLocaleString('en-NG', { month: 'short', year: '2-digit' })
-      if (!monthMap[label]) monthMap[label] = { gmv: 0, rides: 0 }
-      monthMap[label].gmv   += Number(r._sum.totalAmount ?? 0)
-      monthMap[label].rides += r._count.id
+      const key = `${r.createdAt.getFullYear()}-${String(r.createdAt.getMonth() + 1).padStart(2, '0')}`
+      if (!monthMap[key]) {
+        monthMap[key] = {
+          label: r.createdAt.toLocaleString('en-NG', { month: 'short', year: '2-digit' }),
+          gmv: 0, rides: 0,
+        }
+      }
+      monthMap[key].gmv   += Number(r._sum.totalAmount ?? 0)
+      monthMap[key].rides += r._count.id
     })
-    const monthly = Object.entries(monthMap).map(([month, v]) => ({ month, ...v }))
+    const monthly = Object.keys(monthMap).sort()
+      .map((k) => ({ month: monthMap[k].label, gmv: monthMap[k].gmv, rides: monthMap[k].rides }))
 
     // Top companies by GMV this month
     const topCompanies = await prisma.booking.groupBy({

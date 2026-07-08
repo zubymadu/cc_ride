@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "729480818181",
+    "project_id": "ccrideapp",
+    "storage_bucket": "ccrideapp.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:729480818181:android:ba90fb3a91d3f80ab8b66c",
+        "android_client_info": {
+          "package_name": "com.dcesn.ccride"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "729480818181-cfru8l41sl64g9q639c72dnvor4g6i6f.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.dcesn.ccride",
+            "certificate_hash": "d813127ee3258eee837b6472ad3b0796431ba2f0"
+          }
+        },
+        {
+          "client_id": "729480818181-n31ga64o99db8f3s98vkd33f3kvimn32.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDbskwrmOZSGKKEjSqOwVB--qVH1nzInn4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "729480818181-n31ga64o99db8f3s98vkd33f3kvimn32.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "729480818181-680jtff9pu3lstd1u67i3c6cfcbleigt.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.dcesn.ccrideapp"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

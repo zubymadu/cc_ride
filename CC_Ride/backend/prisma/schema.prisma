@@ -220,11 +220,19 @@ model AdminUser {
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt      @map("updated_at")
 
+  // Scope — null = platform super-admin; set = company/branch admin
+  scopeCompanyId String? @db.Uuid @map("scope_company_id")
+  scopeBranchId  BigInt? @map("scope_branch_id")
+
   // Relations
   reviewedDocuments  DriverDocument[]
   assignedTickets    SupportTicket[]
   onboardedCompanies Company[]
   generatedInvoices  Invoice[]
+  companyCredits     CompanyCredit[]
+  branchCredits      BranchCredit[]
+  scopeCompany       Company?       @relation("CompanyAdmins", fields: [scopeCompanyId], references: [id])
+  scopeBranch        CompanyBranch? @relation("BranchAdmins", fields: [scopeBranchId], references: [id])
 
   @@map("admin_users")
 }
@@ -608,6 +616,7 @@ model Booking {
 
   // Corporate (nullable — personal bookings leave these null)
   companyId         String? @db.Uuid @map("company_id")
+  branchId          BigInt? @map("branch_id")
   departmentId      BigInt? @map("department_id")
   costCentreId      BigInt? @map("cost_centre_id")
   // Denorm FK — set after approval request is created; no Prisma relation to avoid circular dep
@@ -652,6 +661,7 @@ model Booking {
   passenger       User              @relation("BookingPassenger", fields: [passengerId], references: [id])
   driver          User?             @relation("BookingDriver", fields: [driverId], references: [id])
   company         Company?          @relation(fields: [companyId], references: [id])
+  branch          CompanyBranch?    @relation(fields: [branchId], references: [id])
   department      Department?       @relation(fields: [departmentId], references: [id])
   costCentre       CostCentre?       @relation(fields: [costCentreId], references: [id])
   approvalRequests ApprovalRequest[] // back-relation: find via prisma.approvalRequest.findFirst({ where: { bookingId } })
@@ -907,6 +917,9 @@ model Company {
   subscriptionExpiresAt DateTime? @map("subscription_expires_at")
   // Commission override (null = use platform default)
   commissionRate     Decimal?  @db.Decimal(5, 2) @map("commission_rate")
+  // Prepaid wallet (credited by admin for direct payments)
+  walletBalance Decimal @default(0.00) @db.Decimal(15, 2) @map("wallet_balance")
+
   // Meta
   onboardedById BigInt?   @map("onboarded_by")
   notes         String?
@@ -924,8 +937,100 @@ model Company {
   ridePolicies      RidePolicy[]
   invoices          Invoice[]
   receipts          RideReceipt[]
+  creditLedger      CompanyCredit[]
+  regions           CompanyRegion[]
+  branches          CompanyBranch[]
+  adminUsers        AdminUser[]        @relation("CompanyAdmins")
 
   @@map("companies")
+}
+
+model CompanyRegion {
+  id        BigInt   @id @default(autoincrement())
+  companyId String   @db.Uuid @map("company_id")
+  name      String                   // e.g. "South-West Zone", "North Central"
+  code      String?                  // e.g. "SW", "NC"
+  isActive  Boolean  @default(true)  @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  company  Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  branches CompanyBranch[]
+
+  @@unique([companyId, name])
+  @@map("company_regions")
+}
+
+model CompanyBranch {
+  id           BigInt   @id @default(autoincrement())
+  companyId    String   @db.Uuid @map("company_id")
+  regionId     BigInt?  @map("region_id")
+  name         String                   // e.g. "Victoria Island Branch"
+  code         String?                  // unique shortcode per company
+  address      String?
+  city         String?
+  state        String   @default("Lagos")
+  contactName  String?  @map("contact_name")
+  contactPhone String?  @map("contact_phone")
+  contactEmail String?  @map("contact_email")
+  isHeadquarters Boolean @default(false) @map("is_headquarters")
+  isActive     Boolean  @default(true)   @map("is_active")
+  // Optional independent billing wallet
+  walletBalance Decimal @default(0.00) @db.Decimal(15, 2) @map("wallet_balance")
+  // Optional independent billing flag
+  billedSeparately Boolean @default(false) @map("billed_separately")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt      @map("updated_at")
+
+  company   Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  region    CompanyRegion? @relation(fields: [regionId], references: [id])
+  employees CompanyEmployee[]
+  bookings  Booking[]
+  budgets   Budget[]
+  ridePolicies     RidePolicy[]
+  approvalWorkflows ApprovalWorkflow[]
+  invoices  Invoice[]
+  adminUsers AdminUser[]  @relation("BranchAdmins")
+  creditLedger BranchCredit[]
+
+  @@unique([companyId, code])
+  @@index([companyId, regionId])
+  @@map("company_branches")
+}
+
+model BranchCredit {
+  id           BigInt   @id @default(autoincrement())
+  branchId     BigInt   @map("branch_id")
+  amount       Decimal  @db.Decimal(15, 2)
+  balanceAfter Decimal  @db.Decimal(15, 2) @map("balance_after")
+  paymentMethod String  @map("payment_method")
+  reference    String?
+  note         String?
+  creditedById BigInt   @map("credited_by")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  branch     CompanyBranch @relation(fields: [branchId], references: [id])
+  creditedBy AdminUser     @relation(fields: [creditedById], references: [id])
+
+  @@index([branchId, createdAt(sort: Desc)])
+  @@map("branch_credits")
+}
+
+model CompanyCredit {
+  id           BigInt   @id @default(autoincrement())
+  companyId    String   @db.Uuid @map("company_id")
+  amount       Decimal  @db.Decimal(15, 2)           // positive = credit, negative = debit
+  balanceAfter Decimal  @db.Decimal(15, 2) @map("balance_after")
+  paymentMethod String  @map("payment_method")       // e.g. "bank_transfer", "cash", "cheque"
+  reference    String?                                // payment ref / cheque number
+  note         String?
+  creditedById BigInt   @map("credited_by")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  company    Company   @relation(fields: [companyId], references: [id])
+  creditedBy AdminUser @relation(fields: [creditedById], references: [id])
+
+  @@index([companyId, createdAt(sort: Desc)])
+  @@map("company_credits")
 }
 
 model Department {
@@ -974,6 +1079,7 @@ model CompanyEmployee {
   id                BigInt       @id @default(autoincrement())
   companyId         String       @db.Uuid @map("company_id")
   userId            String       @db.Uuid @map("user_id")
+  branchId          BigInt?      @map("branch_id")
   departmentId      BigInt?      @map("department_id")
   costCentreId      BigInt?      @map("cost_centre_id")
   role              EmployeeRole @default(employee)
@@ -985,14 +1091,16 @@ model CompanyEmployee {
   joinedAt          DateTime?    @map("joined_at")
   deactivatedAt     DateTime?    @map("deactivated_at")
 
-  company    Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  department Department? @relation(fields: [departmentId], references: [id])
-  costCentre CostCentre? @relation(fields: [costCentreId], references: [id])
+  company    Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branch     CompanyBranch? @relation(fields: [branchId], references: [id])
+  department Department?    @relation(fields: [departmentId], references: [id])
+  costCentre CostCentre?    @relation(fields: [costCentreId], references: [id])
 
   @@unique([companyId, userId])
   @@index([companyId])
   @@index([userId])
+  @@index([branchId])
   @@map("company_employees")
 }
 
@@ -1003,6 +1111,7 @@ model CompanyEmployee {
 model Budget {
   id              BigInt           @id @default(autoincrement())
   companyId       String           @db.Uuid @map("company_id")
+  branchId        BigInt?          @map("branch_id")
   departmentId    BigInt?          @map("department_id")
   costCentreId    BigInt?          @map("cost_centre_id")
   periodType      BudgetPeriodType @default(monthly) @map("period_type")
@@ -1016,6 +1125,7 @@ model Budget {
   updatedAt       DateTime         @updatedAt      @map("updated_at")
 
   company      Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  branch       CompanyBranch?      @relation(fields: [branchId], references: [id])
   department   Department?         @relation(fields: [departmentId], references: [id])
   costCentre   CostCentre?         @relation(fields: [costCentreId], references: [id])
   createdBy    User                @relation("BudgetCreator", fields: [createdById], references: [id])
@@ -1047,6 +1157,7 @@ model BudgetTransaction {
 model ApprovalWorkflow {
   id                   BigInt       @id @default(autoincrement())
   companyId            String       @db.Uuid @map("company_id")
+  branchId             BigInt?      @map("branch_id")
   departmentId         BigInt?      @map("department_id")
   name                 String
   requiresApproval     Boolean      @default(true) @map("requires_approval")
@@ -1060,6 +1171,7 @@ model ApprovalWorkflow {
   updatedAt            DateTime     @updatedAt      @map("updated_at")
 
   company            Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  branch             CompanyBranch?    @relation(fields: [branchId], references: [id])
   department         Department?       @relation(fields: [departmentId], references: [id])
   specificApprover   User?             @relation("WorkflowApprover", fields: [specificApproverId], references: [id])
   escalationApprover User?             @relation("WorkflowEscalation", fields: [escalationApproverId], references: [id])
@@ -1108,6 +1220,7 @@ model ApprovalRequest {
 model RidePolicy {
   id                   BigInt   @id @default(autoincrement())
   companyId            String   @db.Uuid @map("company_id")
+  branchId             BigInt?  @map("branch_id")
   departmentId         BigInt?  @map("department_id")
   name                 String
   allowedDays          Int[]    @map("allowed_days")          // 1=Mon…7=Sun; empty = all days
@@ -1124,10 +1237,11 @@ model RidePolicy {
   createdAt            DateTime @default(now()) @map("created_at")
   updatedAt            DateTime @updatedAt      @map("updated_at")
 
-  company        Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  department     Department?  @relation(fields: [departmentId], references: [id])
-  createdBy      User         @relation("PolicyCreator", fields: [createdById], references: [id])
-  maxVehicleType VehicleType? @relation(fields: [maxVehicleTypeId], references: [id])
+  company        Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  branch         CompanyBranch? @relation(fields: [branchId], references: [id])
+  department     Department?    @relation(fields: [departmentId], references: [id])
+  createdBy      User           @relation("PolicyCreator", fields: [createdById], references: [id])
+  maxVehicleType VehicleType?   @relation(fields: [maxVehicleTypeId], references: [id])
 
   @@map("ride_policies")
 }
@@ -1177,6 +1291,7 @@ model RideReceipt {
 model Invoice {
   id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   companyId        String   @db.Uuid @map("company_id")
+  branchId         BigInt?  @map("branch_id")   // null = company-level invoice
   invoiceNumber    String   @unique @map("invoice_number")
   periodStart      DateTime @db.Date @map("period_start")
   periodEnd        DateTime @db.Date @map("period_end")
@@ -1196,10 +1311,12 @@ model Invoice {
   createdAt        DateTime @default(now()) @map("created_at")
 
   company     Company          @relation(fields: [companyId], references: [id])
+  branch      CompanyBranch?   @relation(fields: [branchId], references: [id])
   generatedBy AdminUser?       @relation(fields: [generatedById], references: [id])
   lineItems   InvoiceLineItem[]
 
   @@index([companyId, periodStart])
+  @@index([branchId, periodStart])
   @@map("invoices")
 }
 

@@ -3,9 +3,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Search, CheckCircle, XCircle, Building2, Loader2,
   ChevronDown, Users, Car, Percent, AlertTriangle,
-  Plus, Layers, MapPin,
+  Plus, Layers, MapPin, Wallet, History, GitBranch,
+  Globe, Edit2, ToggleLeft, ToggleRight, UserPlus,
 } from 'lucide-react'
-import { get, post } from '../lib/api'
+import { get, post, api } from '../lib/api'
 import { fmt, badge } from '../lib/utils'
 import PageHeader from '../components/PageHeader'
 import EmptyState from '../components/EmptyState'
@@ -18,6 +19,20 @@ interface Company {
   contact_name: string; contact_email: string; contact_phone: string
   status: string; total_employees: number; rides_this_month: number
   gmv_this_month: number; commission_rate: number; created_at: string
+  wallet_balance: number
+}
+interface CreditEntry {
+  id: string; amount: number; balance_after: number
+  payment_method: string; reference: string | null; note: string | null
+  credited_by: string; created_at: string
+}
+interface Region { id: string; name: string; code: string | null; is_active: boolean; branch_count: number }
+interface Branch {
+  id: string; company_id: string; region_id: string | null; region_name: string | null
+  name: string; code: string | null; address: string | null; city: string | null; state: string
+  contact_name: string | null; contact_phone: string | null; contact_email: string | null
+  is_headquarters: boolean; is_active: boolean; billed_separately: boolean
+  wallet_balance: number; employee_count: number; booking_count: number; created_at: string
 }
 interface Employee { id: string; name: string; email: string; mobile: string; role: string; is_active: boolean; joined_at: string; status: string }
 interface CompanyRide { id: string; passenger: string; driver: string; origin: string; destination: string; status: string; total_amount: number; payment_status: string; created_at: string }
@@ -25,7 +40,7 @@ interface Department { id: string; name: string; code: string; employee_count: n
 interface CostCentre { id: string; name: string; code: string; description: string; department: string | null; employee_count: number; total_bookings: number }
 interface AvailableDriver { id: string; name: string; mobile: string; rating: number }
 
-type DetailTab = 'info' | 'employees' | 'rides' | 'departments' | 'cost-centres'
+type DetailTab = 'info' | 'employees' | 'rides' | 'departments' | 'cost-centres' | 'branches' | 'wallet'
 
 // ─── Field component ─────────────────────────────────────────────────────────
 
@@ -517,6 +532,447 @@ function CompanyRides({ companyId }: { companyId: string }) {
   )
 }
 
+// ─── Branches Tab ────────────────────────────────────────────────────────────
+
+function BranchesTab({ company }: { company: Company }) {
+  const qc = useQueryClient()
+  const [showAddBranch, setShowAddBranch] = useState(false)
+  const [showAddRegion, setShowAddRegion] = useState(false)
+  const [editBranch, setEditBranch]       = useState<Branch | null>(null)
+  const [showAdmins, setShowAdmins]       = useState<Branch | null>(null)
+
+  const { data: regions = [], isLoading: loadingRegions } = useQuery<Region[]>({
+    queryKey: ['company-regions', company.id],
+    queryFn:  () => get(`/admin/companies/${company.id}/regions`),
+  })
+  const { data: branches = [], isLoading: loadingBranches } = useQuery<Branch[]>({
+    queryKey: ['company-branches', company.id],
+    queryFn:  () => get(`/admin/companies/${company.id}/branches`),
+  })
+
+  const toggle = useMutation({
+    mutationFn: (b: Branch) => api.patch(`/admin/companies/${company.id}/branches/${b.id}`, { is_active: !b.is_active }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['company-branches', company.id] }),
+  })
+
+  const isLoading = loadingRegions || loadingBranches
+
+  // Group branches by region
+  const unzoned = branches.filter(b => !b.region_id)
+  const byRegion = regions.map(r => ({
+    region: r,
+    branches: branches.filter(b => b.region_id === r.id),
+  })).filter(g => g.branches.length > 0)
+
+  const BranchCard = ({ b }: { b: Branch }) => (
+    <div className={`bg-white border rounded-xl p-4 space-y-2 ${b.is_headquarters ? 'border-brand-300' : 'border-gray-100'}`}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          {b.is_headquarters && (
+            <span className="flex-shrink-0 text-[10px] font-bold uppercase tracking-wide bg-brand-100 text-brand-700 px-2 py-0.5 rounded-full">HQ</span>
+          )}
+          <p className="font-semibold text-gray-900 truncate">{b.name}</p>
+          {b.code && <span className="text-xs text-gray-400 font-mono flex-shrink-0">{b.code}</span>}
+        </div>
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <button onClick={() => setEditBranch(b)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600" title="Edit">
+            <Edit2 className="w-3.5 h-3.5" />
+          </button>
+          <button onClick={() => setShowAdmins(b)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-blue-600" title="Admins">
+            <UserPlus className="w-3.5 h-3.5" />
+          </button>
+          <button onClick={() => toggle.mutate(b)} className="p-1.5 rounded-lg hover:bg-gray-100" title={b.is_active ? 'Deactivate' : 'Activate'}>
+            {b.is_active
+              ? <ToggleRight className="w-4 h-4 text-green-500" />
+              : <ToggleLeft  className="w-4 h-4 text-gray-300" />}
+          </button>
+        </div>
+      </div>
+
+      {(b.city || b.state) && (
+        <p className="text-xs text-gray-500 flex items-center gap-1">
+          <MapPin className="w-3 h-3 flex-shrink-0" />
+          {[b.address, b.city, b.state].filter(Boolean).join(', ')}
+        </p>
+      )}
+
+      <div className="flex items-center gap-4 text-xs text-gray-500 pt-1 border-t border-gray-50">
+        <span><Users className="w-3 h-3 inline mr-1" />{b.employee_count} staff</span>
+        <span><Car className="w-3 h-3 inline mr-1" />{b.booking_count} rides</span>
+        <span className="ml-auto font-semibold text-brand-600">₦{Number(b.wallet_balance).toLocaleString()}</span>
+        {b.billed_separately && <span className="bg-purple-50 text-purple-600 px-1.5 py-0.5 rounded text-[10px] font-medium">Billed separately</span>}
+      </div>
+    </div>
+  )
+
+  return (
+    <div className="space-y-4">
+      {showAddBranch && <AddBranchModal companyId={company.id} regions={regions} onClose={() => { setShowAddBranch(false); qc.invalidateQueries({ queryKey: ['company-branches', company.id] }) }} />}
+      {showAddRegion && <AddRegionModal companyId={company.id} onClose={() => { setShowAddRegion(false); qc.invalidateQueries({ queryKey: ['company-regions', company.id] }) }} />}
+      {editBranch && <EditBranchModal branch={editBranch} companyId={company.id} regions={regions} onClose={() => { setEditBranch(null); qc.invalidateQueries({ queryKey: ['company-branches', company.id] }) }} />}
+      {showAdmins && <BranchAdminsModal branch={showAdmins} companyId={company.id} onClose={() => setShowAdmins(null)} />}
+
+      <div className="flex flex-wrap gap-2 justify-between items-center">
+        <p className="text-sm text-gray-500">{branches.length} branch{branches.length !== 1 ? 'es' : ''} · {regions.length} region{regions.length !== 1 ? 's' : ''}</p>
+        <div className="flex gap-2">
+          <button onClick={() => setShowAddRegion(true)} className="btn-secondary text-xs"><Globe className="w-3.5 h-3.5" /> Add Region</button>
+          <button onClick={() => setShowAddBranch(true)} className="btn-primary text-xs"><Plus className="w-3.5 h-3.5" /> Add Branch</button>
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-brand-500" /></div>
+      ) : branches.length === 0 ? (
+        <p className="text-sm text-gray-400 text-center py-6">No branches yet — add one above</p>
+      ) : (
+        <div className="space-y-5">
+          {/* Unzoned branches */}
+          {unzoned.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">No Region</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {unzoned.map(b => <BranchCard key={b.id} b={b} />)}
+              </div>
+            </div>
+          )}
+          {/* Grouped by region */}
+          {byRegion.map(({ region, branches: rBranches }) => (
+            <div key={region.id} className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Globe className="w-3.5 h-3.5 text-brand-400" />
+                <p className="text-xs font-semibold text-brand-600 uppercase tracking-wide">{region.name}</p>
+                {region.code && <span className="text-xs text-gray-400 font-mono">{region.code}</span>}
+                <span className="text-xs text-gray-400">· {rBranches.length} branch{rBranches.length !== 1 ? 'es' : ''}</span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {rBranches.map(b => <BranchCard key={b.id} b={b} />)}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function AddRegionModal({ companyId, onClose }: { companyId: string; onClose: () => void }) {
+  const [form, setForm] = useState({ name: '', code: '' })
+  const [err, setErr] = useState('')
+  const create = useMutation({
+    mutationFn: () => post(`/admin/companies/${companyId}/regions`, form),
+    onSuccess: onClose,
+    onError: (e: any) => setErr(e?.message ?? 'Failed'),
+  })
+  return (
+    <Modal open={true} onClose={onClose} title="Add Region / Zone">
+      <div className="space-y-4">
+        {err && <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2 rounded-lg">{err}</div>}
+        <Field label="Region Name *"><input className="input" placeholder="e.g. South-West Zone" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} /></Field>
+        <Field label="Code (optional)"><input className="input" placeholder="e.g. SW" value={form.code} onChange={e => setForm(p => ({ ...p, code: e.target.value.toUpperCase() }))} /></Field>
+        <div className="flex gap-3 pt-2">
+          <button onClick={onClose} className="btn-secondary flex-1">Cancel</button>
+          <button onClick={() => create.mutate()} disabled={create.isPending || !form.name} className="btn-primary flex-1">
+            {create.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Globe className="w-4 h-4" />} Add Region
+          </button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+function BranchForm({ initial, regions, onSubmit, loading, err, submitLabel }: {
+  initial: any; regions: Region[]
+  onSubmit: (form: any) => void; loading: boolean; err: string; submitLabel: string
+}) {
+  const [form, setForm] = useState(initial)
+  const f = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+    setForm((p: any) => ({ ...p, [k]: e.target.value }))
+  const chk = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setForm((p: any) => ({ ...p, [k]: e.target.checked }))
+
+  return (
+    <div className="space-y-4">
+      {err && <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2 rounded-lg">{err}</div>}
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Branch Name *"><input className="input" placeholder="e.g. Victoria Island" value={form.name} onChange={f('name')} /></Field>
+        <Field label="Code"><input className="input" placeholder="e.g. VGC-001" value={form.code} onChange={e => setForm((p: any) => ({ ...p, code: e.target.value.toUpperCase() }))} /></Field>
+      </div>
+      <Field label="Region / Zone">
+        <select className="input" value={form.region_id} onChange={f('region_id')}>
+          <option value="">— No region —</option>
+          {regions.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+        </select>
+      </Field>
+      <div className="grid grid-cols-3 gap-3">
+        <Field label="Address"><input className="input" placeholder="Street" value={form.address} onChange={f('address')} /></Field>
+        <Field label="City"><input className="input" placeholder="Lagos" value={form.city} onChange={f('city')} /></Field>
+        <Field label="State">
+          <select className="input" value={form.state} onChange={f('state')}>
+            {['Lagos','Abuja','Rivers','Kano','Oyo','Delta','Ogun','Anambra','Enugu','Kaduna'].map(s => <option key={s}>{s}</option>)}
+          </select>
+        </Field>
+      </div>
+      <div className="grid grid-cols-3 gap-3">
+        <Field label="Contact Name"><input className="input" value={form.contact_name} onChange={f('contact_name')} /></Field>
+        <Field label="Contact Phone"><input className="input" value={form.contact_phone} onChange={f('contact_phone')} /></Field>
+        <Field label="Contact Email"><input className="input" type="email" value={form.contact_email} onChange={f('contact_email')} /></Field>
+      </div>
+      <div className="flex gap-6 pt-1">
+        <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
+          <input type="checkbox" className="accent-brand-500" checked={form.is_headquarters} onChange={chk('is_headquarters')} />
+          Headquarters
+        </label>
+        <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
+          <input type="checkbox" className="accent-purple-500" checked={form.billed_separately} onChange={chk('billed_separately')} />
+          Billed separately
+        </label>
+      </div>
+      <div className="flex gap-3 pt-2">
+        <button type="button" className="btn-secondary flex-1" onClick={() => onSubmit(null)}>Cancel</button>
+        <button type="button" onClick={() => onSubmit(form)} disabled={loading || !form.name} className="btn-primary flex-1">
+          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <GitBranch className="w-4 h-4" />} {submitLabel}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function AddBranchModal({ companyId, regions, onClose }: { companyId: string; regions: Region[]; onClose: () => void }) {
+  const [err, setErr] = useState('')
+  const create = useMutation({
+    mutationFn: (form: any) => post(`/admin/companies/${companyId}/branches`, form),
+    onSuccess: onClose,
+    onError: (e: any) => setErr(e?.message ?? 'Failed'),
+  })
+  return (
+    <Modal open={true} onClose={onClose} title="Add Branch" size="lg">
+      <BranchForm
+        initial={{ name: '', code: '', region_id: '', address: '', city: '', state: 'Lagos', contact_name: '', contact_phone: '', contact_email: '', is_headquarters: false, billed_separately: false }}
+        regions={regions} loading={create.isPending} err={err} submitLabel="Create Branch"
+        onSubmit={form => { if (!form) { onClose(); return } create.mutate(form) }}
+      />
+    </Modal>
+  )
+}
+
+function EditBranchModal({ branch, companyId, regions, onClose }: { branch: Branch; companyId: string; regions: Region[]; onClose: () => void }) {
+  const [err, setErr] = useState('')
+  const update = useMutation({
+    mutationFn: (form: any) => api.patch(`/admin/companies/${companyId}/branches/${branch.id}`, form),
+    onSuccess: onClose,
+    onError: (e: any) => setErr(e?.message ?? 'Failed'),
+  })
+  return (
+    <Modal open={true} onClose={onClose} title={`Edit — ${branch.name}`} size="lg">
+      <BranchForm
+        initial={{ name: branch.name, code: branch.code ?? '', region_id: branch.region_id ?? '', address: branch.address ?? '', city: branch.city ?? '', state: branch.state, contact_name: branch.contact_name ?? '', contact_phone: branch.contact_phone ?? '', contact_email: branch.contact_email ?? '', is_headquarters: branch.is_headquarters, billed_separately: branch.billed_separately }}
+        regions={regions} loading={update.isPending} err={err} submitLabel="Save Changes"
+        onSubmit={form => { if (!form) { onClose(); return } update.mutate(form) }}
+      />
+    </Modal>
+  )
+}
+
+function BranchAdminsModal({ branch, companyId, onClose }: { branch: Branch; companyId: string; onClose: () => void }) {
+  const qc = useQueryClient()
+  const [form, setForm] = useState({ username: '', email: '', password: '' })
+  const [err, setErr] = useState('')
+
+  const { data: admins = [], isLoading } = useQuery<any[]>({
+    queryKey: ['branch-admins', branch.id],
+    queryFn:  () => get(`/admin/companies/${companyId}/admins?branch_id=${branch.id}`),
+  })
+
+  const create = useMutation({
+    mutationFn: () => post(`/admin/companies/${companyId}/admins`, { ...form, branch_id: branch.id }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['branch-admins', branch.id] }); setForm({ username: '', email: '', password: '' }); setErr('') },
+    onError: (e: any) => setErr(e?.message ?? 'Failed'),
+  })
+
+  return (
+    <Modal open={true} onClose={onClose} title={`Branch Admins — ${branch.name}`} size="lg">
+      <div className="space-y-5">
+        {/* Existing admins */}
+        {isLoading ? <div className="flex justify-center py-4"><Loader2 className="w-5 h-5 animate-spin text-brand-500" /></div>
+          : admins.length === 0 ? <p className="text-sm text-gray-400 text-center py-2">No admins yet</p>
+          : (
+            <div className="space-y-2">
+              {admins.map((a: any) => (
+                <div key={a.id} className="flex items-center gap-3 bg-gray-50 rounded-xl px-4 py-2.5 text-sm">
+                  <div className="w-7 h-7 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-xs font-bold flex-shrink-0">
+                    {a.username[0].toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-gray-900">{a.username}</p>
+                    <p className="text-xs text-gray-400">{a.email}</p>
+                  </div>
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${a.is_active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-400'}`}>{a.is_active ? 'Active' : 'Inactive'}</span>
+                  {a.last_login_at && <span className="text-xs text-gray-400 hidden sm:block">Last: {fmt.date(a.last_login_at)}</span>}
+                </div>
+              ))}
+            </div>
+          )}
+
+        {/* Add admin */}
+        <div className="border-t border-gray-100 pt-4 space-y-3">
+          <p className="text-sm font-semibold text-gray-700">Add Admin</p>
+          {err && <div className="bg-red-50 border border-red-200 text-red-700 text-xs px-3 py-2 rounded-lg">{err}</div>}
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Username"><input className="input" placeholder="branch.vi.admin" value={form.username} onChange={e => setForm(p => ({ ...p, username: e.target.value }))} /></Field>
+            <Field label="Email"><input className="input" type="email" placeholder="admin@company.com" value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} /></Field>
+          </div>
+          <Field label="Temporary Password"><input className="input" type="password" placeholder="Min 8 characters" value={form.password} onChange={e => setForm(p => ({ ...p, password: e.target.value }))} /></Field>
+          <button onClick={() => create.mutate()} disabled={create.isPending || !form.username || !form.email || !form.password} className="btn-primary w-full text-sm">
+            {create.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />} Create Admin Account
+          </button>
+        </div>
+        <button onClick={onClose} className="btn-secondary w-full text-sm">Close</button>
+      </div>
+    </Modal>
+  )
+}
+
+// ─── Credit Company Modal ─────────────────────────────────────────────────────
+
+function CreditModal({ company, onClose }: { company: Company; onClose: () => void }) {
+  const qc = useQueryClient()
+  const [form, setForm] = useState({ amount: '', payment_method: 'bank_transfer', reference: '', note: '' })
+  const [err, setErr] = useState('')
+
+  const credit = useMutation({
+    mutationFn: () => post(`/admin/companies/${company.id}/credit`, {
+      amount: parseFloat(form.amount),
+      payment_method: form.payment_method,
+      reference: form.reference || undefined,
+      note: form.note || undefined,
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin-companies'] })
+      qc.invalidateQueries({ queryKey: ['company-credits', company.id] })
+      onClose()
+    },
+    onError: (e: any) => setErr(e?.message ?? 'Failed to credit account'),
+  })
+
+  return (
+    <Modal open={true} onClose={onClose} title={`Credit Account — ${company.name}`}>
+      <div className="space-y-4">
+        <div className="flex items-center gap-3 bg-brand-50 border border-brand-100 rounded-xl px-4 py-3">
+          <Wallet className="w-5 h-5 text-brand-500 flex-shrink-0" />
+          <div>
+            <p className="text-xs text-gray-500">Current wallet balance</p>
+            <p className="text-lg font-bold text-brand-700">₦{Number(company.wallet_balance ?? 0).toLocaleString('en-NG', { minimumFractionDigits: 2 })}</p>
+          </div>
+        </div>
+
+        {err && <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2 rounded-lg">{err}</div>}
+
+        <Field label="Amount (₦) *">
+          <input className="input" type="number" min="1" placeholder="e.g. 500000"
+            value={form.amount} onChange={(e) => setForm((p) => ({ ...p, amount: e.target.value }))} />
+        </Field>
+
+        <Field label="Payment Method *">
+          <select className="input" value={form.payment_method} onChange={(e) => setForm((p) => ({ ...p, payment_method: e.target.value }))}>
+            <option value="bank_transfer">Bank Transfer</option>
+            <option value="cheque">Cheque</option>
+            <option value="cash">Cash</option>
+            <option value="pos">POS</option>
+            <option value="other">Other</option>
+          </select>
+        </Field>
+
+        <Field label="Payment Reference / Cheque No.">
+          <input className="input" placeholder="e.g. TRF-2026062400123"
+            value={form.reference} onChange={(e) => setForm((p) => ({ ...p, reference: e.target.value }))} />
+        </Field>
+
+        <Field label="Internal Note">
+          <input className="input" placeholder="e.g. June prepayment for 50 rides"
+            value={form.note} onChange={(e) => setForm((p) => ({ ...p, note: e.target.value }))} />
+        </Field>
+
+        {form.amount && !isNaN(parseFloat(form.amount)) && (
+          <div className="bg-green-50 border border-green-200 text-green-800 text-sm px-4 py-2.5 rounded-lg">
+            New balance after credit: <strong>₦{(Number(company.wallet_balance ?? 0) + parseFloat(form.amount)).toLocaleString('en-NG', { minimumFractionDigits: 2 })}</strong>
+          </div>
+        )}
+
+        <div className="flex gap-3 pt-2">
+          <button onClick={onClose} className="btn-secondary flex-1">Cancel</button>
+          <button onClick={() => credit.mutate()} disabled={credit.isPending || !form.amount || parseFloat(form.amount) <= 0}
+            className="btn-primary flex-1">
+            {credit.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wallet className="w-4 h-4" />}
+            Credit Account
+          </button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+// ─── Credit Ledger Tab ────────────────────────────────────────────────────────
+
+function CreditLedgerTab({ company }: { company: Company }) {
+  const { data, isLoading } = useQuery<{ wallet_balance: number; credits: CreditEntry[]; total: number }>({
+    queryKey: ['company-credits', company.id],
+    queryFn:  () => get(`/admin/companies/${company.id}/credits`),
+  })
+  const [creditOpen, setCreditOpen] = useState(false)
+
+  const methodLabel: Record<string, string> = {
+    bank_transfer: 'Bank Transfer', cheque: 'Cheque', cash: 'Cash', pos: 'POS', other: 'Other',
+  }
+
+  return (
+    <div className="space-y-4">
+      {creditOpen && <CreditModal company={{ ...company, wallet_balance: data?.wallet_balance ?? company.wallet_balance }} onClose={() => setCreditOpen(false)} />}
+
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3 bg-brand-50 border border-brand-100 rounded-xl px-4 py-2.5">
+          <Wallet className="w-4 h-4 text-brand-500" />
+          <span className="text-sm text-gray-600">Wallet balance:</span>
+          <span className="font-bold text-brand-700">₦{Number(data?.wallet_balance ?? company.wallet_balance ?? 0).toLocaleString('en-NG', { minimumFractionDigits: 2 })}</span>
+        </div>
+        <button onClick={() => setCreditOpen(true)} className="btn-primary text-sm">
+          <Plus className="w-4 h-4" /> Credit Account
+        </button>
+      </div>
+
+      {isLoading ? (
+        <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-brand-500" /></div>
+      ) : !data?.credits.length ? (
+        <p className="text-sm text-gray-400 text-center py-6">No credits recorded yet</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left border-b border-gray-100">
+                {['Date', 'Amount', 'Balance After', 'Method', 'Reference', 'Note', 'By'].map((h) => (
+                  <th key={h} className="pb-2 font-medium text-gray-500 text-xs">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {data.credits.map((c) => (
+                <tr key={c.id}>
+                  <td className="py-2 text-gray-400 text-xs whitespace-nowrap">{fmt.date(c.created_at)}</td>
+                  <td className="py-2 font-semibold text-green-600">+₦{Number(c.amount).toLocaleString('en-NG', { minimumFractionDigits: 2 })}</td>
+                  <td className="py-2 text-gray-700">₦{Number(c.balance_after).toLocaleString('en-NG', { minimumFractionDigits: 2 })}</td>
+                  <td className="py-2"><span className="badge bg-blue-50 text-blue-700 text-xs">{methodLabel[c.payment_method] ?? c.payment_method}</span></td>
+                  <td className="py-2 text-gray-500 text-xs font-mono">{c.reference ?? '—'}</td>
+                  <td className="py-2 text-gray-500 text-xs max-w-[160px] truncate">{c.note ?? '—'}</td>
+                  <td className="py-2 text-gray-400 text-xs">{c.credited_by}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function Companies() {
@@ -558,8 +1014,10 @@ export default function Companies() {
     { id: 'info',         icon: Building2, label: () => 'Info & Actions' },
     { id: 'employees',    icon: Users,     label: (c) => `Employees (${c.total_employees})` },
     { id: 'rides',        icon: Car,       label: (c) => `Rides (${c.rides_this_month}/mo)` },
-    { id: 'departments',  icon: Layers,    label: () => 'Departments' },
-    { id: 'cost-centres', icon: Percent,   label: () => 'Cost Centres' },
+    { id: 'departments',  icon: Layers,      label: () => 'Departments' },
+    { id: 'cost-centres', icon: Percent,     label: () => 'Cost Centres' },
+    { id: 'branches',     icon: GitBranch,   label: () => 'Branches' },
+    { id: 'wallet',       icon: History,     label: (c) => `Wallet (₦${Number(c.wallet_balance ?? 0).toLocaleString()})` },
   ]
 
   return (
@@ -681,6 +1139,8 @@ export default function Companies() {
                       {detailTab === 'rides'        && <CompanyRides companyId={c.id} />}
                       {detailTab === 'departments'  && <DepartmentsTab companyId={c.id} />}
                       {detailTab === 'cost-centres' && <CostCentresTab companyId={c.id} />}
+                      {detailTab === 'branches'     && <BranchesTab company={c} />}
+                      {detailTab === 'wallet'       && <CreditLedgerTab company={c} />}
                     </div>
                   </div>
                 )}

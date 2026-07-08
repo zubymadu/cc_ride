@@ -9,8 +9,13 @@ export async function adminLogin(req: Request, res: Response) {
     const { username, password } = req.body as { username: string; password: string }
     if (!username || !password) { fail(res, 'Username and password required'); return }
 
-    const admin = await prisma.adminUser.findFirst({
+    const admin = await (prisma.adminUser as any).findFirst({
       where: { OR: [{ username }, { email: username }] },
+      select: {
+        id: true, username: true, email: true, passwordHash: true,
+        isSuperAdmin: true, isActive: true,
+        scopeCompanyId: true, scopeBranchId: true,
+      },
     })
     if (!admin) { fail(res, 'Invalid credentials'); return }
 
@@ -22,7 +27,12 @@ export async function adminLogin(req: Request, res: Response) {
     const adminId = admin.id.toString()
 
     const token = jwt.sign(
-      { id: adminId, username: admin.username, email: admin.email, isSuperAdmin: admin.isSuperAdmin },
+      {
+        id: adminId, username: admin.username, email: admin.email,
+        isSuperAdmin: admin.isSuperAdmin,
+        scopeCompanyId: admin.scopeCompanyId ?? null,
+        scopeBranchId:  admin.scopeBranchId?.toString() ?? null,
+      },
       process.env.JWT_SECRET!,
       { expiresIn: '12h' },
     )
@@ -31,7 +41,12 @@ export async function adminLogin(req: Request, res: Response) {
 
     ok(res, {
       token,
-      admin: { id: adminId, username: admin.username, email: admin.email, isSuperAdmin: admin.isSuperAdmin },
+      admin: {
+        id: adminId, username: admin.username, email: admin.email,
+        isSuperAdmin: admin.isSuperAdmin,
+        scopeCompanyId: admin.scopeCompanyId ?? null,
+        scopeBranchId:  admin.scopeBranchId?.toString() ?? null,
+      },
     })
   } catch (err) {
     serverError(res, err)

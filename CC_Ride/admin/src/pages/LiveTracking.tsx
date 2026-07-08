@@ -187,7 +187,10 @@ export default function LiveTracking() {
 
   // ── Socket.IO connection ───────────────────────────────────────────────────
   useEffect(() => {
-    const socket = socketIO('http://localhost:3000', {
+    // Dev: connect directly to port 3000. Production: go through Nginx on same origin.
+    const isLocal = window.location.hostname === 'localhost' || /^192\.168\.|^10\./.test(window.location.hostname)
+    const socketUrl = isLocal ? `http://${window.location.hostname}:3000` : `${window.location.protocol}//${window.location.hostname}`
+    const socket = socketIO(socketUrl, {
       transports: ['websocket', 'polling'],
     })
     socketRef.current = socket

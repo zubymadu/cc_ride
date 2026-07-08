@@ -15,11 +15,17 @@ export async function getSettings(_req: Request, res: Response) {
       max_cancellation_minutes: Number(s?.maxCancellationMinutes ?? 5),
       surge_multiplier_max:    Number(s?.surgeMultiplierMax ?? 2.5),
       maintenance_mode:        s?.maintenanceMode ?? false,
-      paystack_public_key:     s?.paystackPublicKey ?? '',
-      flutterwave_public_key:  s?.flutterwavePublicKey ?? '',
-      google_maps_key_masked:  s?.googleMapsKeyMasked ?? '',
-      firebase_project_id:     s?.firebaseProjectId ?? '',
-      onesignal_app_id_masked: s?.onesignalAppIdMasked ?? '',
+      paystack_public_key:          s?.paystackPublicKey ?? '',
+      paystack_secret_key_masked:   s?.paystackSecretKey ? '••••••••' : '',
+      flutterwave_public_key:       s?.flutterwavePublicKey ?? '',
+      flutterwave_secret_key_masked: s?.flutterwaveSecretKey ? '••••••••' : '',
+      google_maps_key_masked:       s?.googleMapsKey ? '••••••••' : '',
+      firebase_project_id:          s?.firebaseProjectId ?? '',
+      onesignal_app_id_masked:      s?.onesignalAppId ? '••••••••' : '',
+      smtp_host:                    s?.smtpHost ?? '',
+      smtp_port:                    s?.smtpPort ?? 587,
+      smtp_user:                    s?.smtpUsername ?? '',
+      smtp_pass_masked:             s?.smtpPassword ? '••••••••' : '',
     })
   } catch (err) {
     serverError(res, err)
@@ -46,8 +52,14 @@ export async function updateSettings(req: Request, res: Response) {
     if (body.firebase_project_id     !== undefined) data.firebaseProjectId      = body.firebase_project_id
 
     // Only update masked keys if a new non-empty value was provided
-    if (body.google_maps_key_masked  && body.google_maps_key_masked !== '') data.googleMapsKeyMasked  = body.google_maps_key_masked
-    if (body.onesignal_app_id_masked && body.onesignal_app_id_masked !== '') data.onesignalAppIdMasked = body.onesignal_app_id_masked
+    if (body.paystack_secret_key_masked    && body.paystack_secret_key_masked !== '')    data.paystackSecretKey      = body.paystack_secret_key_masked
+    if (body.flutterwave_secret_key_masked && body.flutterwave_secret_key_masked !== '') data.flutterwaveSecretKey   = body.flutterwave_secret_key_masked
+    if (body.google_maps_key_masked        && body.google_maps_key_masked !== '')        data.googleMapsKey          = body.google_maps_key_masked
+    if (body.onesignal_app_id_masked       && body.onesignal_app_id_masked !== '')       data.onesignalAppId         = body.onesignal_app_id_masked
+    if (body.smtp_host  !== undefined) data.smtpHost     = body.smtp_host
+    if (body.smtp_port  !== undefined) data.smtpPort     = body.smtp_port
+    if (body.smtp_user  !== undefined) data.smtpUsername = body.smtp_user
+    if (body.smtp_pass_masked && body.smtp_pass_masked !== '') data.smtpPassword = body.smtp_pass_masked
 
     await prisma.platformSettings.upsert({
       where:  { id: 1 },

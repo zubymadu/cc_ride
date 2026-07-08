@@ -7,8 +7,8 @@ import crypto from 'crypto'
 
 const BASE = 'https://api.paystack.co'
 
-function client() {
-  const key = process.env.PAYSTACK_SECRET_KEY
+function client(secretKey?: string) {
+  const key = secretKey || process.env.PAYSTACK_SECRET_KEY
   if (!key) throw new Error('PAYSTACK_SECRET_KEY not set')
   return axios.create({
     baseURL: BASE,
@@ -55,8 +55,9 @@ export async function paystackInitialize(params: {
   callbackUrl:  string
   metadata?:    Record<string, unknown>
   channels?:    string[]
+  secretKey?:   string
 }): Promise<PaystackInitResult> {
-  const { data } = await client().post('/transaction/initialize', {
+  const { data } = await client(params.secretKey).post('/transaction/initialize', {
     email:        params.email,
     amount:       params.amountKobo,
     reference:    params.reference,
@@ -71,8 +72,8 @@ export async function paystackInitialize(params: {
 
 // ─── Verify Payment ───────────────────────────────────────────────────────────
 
-export async function paystackVerify(reference: string): Promise<PaystackVerifyResult> {
-  const { data } = await client().get(`/transaction/verify/${encodeURIComponent(reference)}`)
+export async function paystackVerify(reference: string, secretKey?: string): Promise<PaystackVerifyResult> {
+  const { data } = await client(secretKey).get(`/transaction/verify/${encodeURIComponent(reference)}`)
   if (!data.status) throw new Error(data.message ?? 'Paystack verify failed')
   return data.data as PaystackVerifyResult
 }

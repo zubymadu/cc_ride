@@ -1,0 +1,63 @@
+<svg width="400" height="360" viewBox="0 0 400 360" fill="none" xmlns="http://www.w3.org/2000/svg">
+
+  <!-- Background -->
+  <rect width="400" height="360" rx="24" fill="#EBF0FF"/>
+
+  <!-- Phone mockup body -->
+  <rect x="110" y="20" width="180" height="320" rx="28" fill="#FFFFFF" stroke="#D0DAFF" stroke-width="3"/>
+
+  <!-- Status bar notch -->
+  <rect x="158" y="28" width="84" height="14" rx="7" fill="#EBF0FF"/>
+
+  <!-- Map area inside phone -->
+  <rect x="122" y="54" width="156" height="130" rx="8" fill="#D0DAFF"/>
+  <!-- Map roads -->
+  <rect x="140" y="80"  width="80" height="6" rx="3" fill="#FFFFFF" opacity="0.8"/>
+  <rect x="190" y="54"  width="6" height="80" rx="3" fill="#FFFFFF" opacity="0.8"/>
+  <rect x="140" y="130" width="120" height="6" rx="3" fill="#FFFFFF" opacity="0.8"/>
+
+  <!-- Car pin on map -->
+  <circle cx="200" cy="100" r="16" fill="#0047FF"/>
+  <text x="200" y="105" font-family="Arial" font-weight="800" font-size="14" fill="#FFFFFF" text-anchor="middle">▲</text>
+
+  <!-- Destination pin -->
+  <circle cx="255" cy="142" r="10" fill="#FFFFFF" stroke="#0047FF" stroke-width="3"/>
+  <circle cx="255" cy="142" r="4" fill="#0047FF"/>
+
+  <!-- Booking card inside phone -->
+  <rect x="122" y="196" width="156" height="134" rx="12" fill="#F5F8FF"/>
+
+  <!-- Driver info -->
+  <circle cx="150" cy="224" r="18" fill="#EBF0FF"/>
+  <text x="150" y="229" font-family="Arial" font-weight="800" font-size="15" fill="#0047FF" text-anchor="middle">D</text>
+
+  <text x="178" y="218" font-family="Arial" font-weight="700" font-size="13" fill="#0A1628">David Eze</text>
+  <text x="178" y="233" font-family="Arial" font-size="11" fill="#4A6080">Toyota Camry · KJA 441</text>
+
+  <!-- Stars -->
+  <text x="178" y="248" font-family="Arial" font-size="12" fill="#EAB308">★★★★★</text>
+
+  <!-- Divider -->
+  <rect x="134" y="258" width="132" height="1" fill="#D0DAFF"/>
+
+  <!-- Fare row -->
+  <text x="134" y="278" font-family="Arial" font-size="11" fill="#4A6080">Fare</text>
+  <text x="134" y="294" font-family="Arial" font-weight="700" font-size="14" fill="#0047FF">₦ 4,500</text>
+
+  <!-- Company badge -->
+  <rect x="194" y="268" width="52" height="20" rx="6" fill="#0047FF"/>
+  <text x="220" y="282" font-family="Arial" font-weight="700" font-size="9" fill="#FFFFFF" text-anchor="middle">COMPANY</text>
+
+  <!-- Confirm button -->
+  <rect x="134" y="304" width="120" height="18" rx="8" fill="#0047FF"/>
+  <text x="194" y="317" font-family="Arial" font-weight="700" font-size="11" fill="#FFFFFF" text-anchor="middle">Book Now</text>
+
+  <!-- Floating checkmark — ride confirmed -->
+  <circle cx="320" cy="90" r="32" fill="#0047FF"/>
+  <path d="M308 90 L317 100 L333 80" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Floating "Approved" label -->
+  <rect x="272" y="132" width="96" height="26" rx="8" fill="#FFFFFF" stroke="#D0DAFF" stroke-width="1"/>
+  <text x="320" y="149" font-family="Arial" font-weight="700" font-size="11" fill="#0047FF" text-anchor="middle">✓ Approved</text>
+
+</svg>

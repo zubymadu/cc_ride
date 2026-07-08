@@ -9,9 +9,11 @@ interface PlatformSettings {
   default_commission_rate: number; booking_fee: number
   driver_payout_threshold: number; max_cancellation_minutes: number
   surge_multiplier_max: number; maintenance_mode: boolean
-  paystack_public_key: string; flutterwave_public_key: string
+  paystack_public_key: string; paystack_secret_key_masked: string
+  flutterwave_public_key: string; flutterwave_secret_key_masked: string
   google_maps_key_masked: string; firebase_project_id: string
   onesignal_app_id_masked: string
+  smtp_host: string; smtp_port: number; smtp_user: string; smtp_pass_masked: string
 }
 
 type Section = 'general' | 'payments' | 'integrations' | 'notifications'
@@ -40,7 +42,17 @@ export default function Settings() {
     queryFn: () => get('/admin/settings'),
   })
 
-  useEffect(() => { if (data) setForm(data) }, [data])
+  useEffect(() => {
+    if (!data) return
+    // _masked fields only ever contain a display placeholder (e.g. "••••••••"),
+    // never the real secret. Blank them in form state so re-saving without
+    // retyping a new value doesn't overwrite the stored secret with the placeholder.
+    const cleaned = { ...data }
+    for (const key of Object.keys(cleaned) as (keyof PlatformSettings)[]) {
+      if (key.toString().endsWith('_masked')) (cleaned as any)[key] = ''
+    }
+    setForm(cleaned)
+  }, [data])
 
   const save = useMutation({
     mutationFn: (payload: Partial<PlatformSettings>) => post('/admin/settings', payload),
@@ -140,11 +152,26 @@ export default function Settings() {
               <div className="bg-amber-50 border border-amber-200 text-amber-700 text-sm px-4 py-2.5 rounded-lg mb-2">
                 Secret keys are write-only. Leave blank to keep the current value.
               </div>
+              <div className="border-b border-gray-100 pb-1 pt-1"><p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Paystack</p></div>
               <Field label="Paystack Public Key"><input className="input font-mono text-xs" placeholder="pk_live_…" value={form.paystack_public_key ?? ''} onChange={(e) => set('paystack_public_key', e.target.value)} /></Field>
+              <Field label="Paystack Secret Key" hint={form.paystack_secret_key_masked ?? 'Not set'}><input className="input font-mono text-xs" type="password" placeholder="Leave blank to keep current key" onChange={(e) => set('paystack_secret_key_masked', e.target.value)} /></Field>
+
+              <div className="border-b border-gray-100 pb-1 pt-2"><p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Flutterwave</p></div>
               <Field label="Flutterwave Public Key"><input className="input font-mono text-xs" placeholder="FLWPUBK_TEST-…" value={form.flutterwave_public_key ?? ''} onChange={(e) => set('flutterwave_public_key', e.target.value)} /></Field>
-              <Field label="Google Maps Key" hint={form.google_maps_key_masked ?? 'Not set'}><input className="input font-mono text-xs" placeholder="Leave blank to keep current key" onChange={(e) => set('google_maps_key_masked', e.target.value)} /></Field>
+              <Field label="Flutterwave Secret Key" hint={form.flutterwave_secret_key_masked ?? 'Not set'}><input className="input font-mono text-xs" type="password" placeholder="Leave blank to keep current key" onChange={(e) => set('flutterwave_secret_key_masked', e.target.value)} /></Field>
+
+              <div className="border-b border-gray-100 pb-1 pt-2"><p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Other Services</p></div>
+              <Field label="Google Maps Key" hint={form.google_maps_key_masked ?? 'Not set'}><input className="input font-mono text-xs" type="password" placeholder="Leave blank to keep current key" onChange={(e) => set('google_maps_key_masked', e.target.value)} /></Field>
               <Field label="Firebase Project ID"><input className="input" value={form.firebase_project_id ?? ''} onChange={(e) => set('firebase_project_id', e.target.value)} /></Field>
-              <Field label="OneSignal App ID" hint={form.onesignal_app_id_masked ?? 'Not set'}><input className="input font-mono text-xs" placeholder="Leave blank to keep current ID" onChange={(e) => set('onesignal_app_id_masked', e.target.value)} /></Field>
+              <Field label="OneSignal App ID" hint={form.onesignal_app_id_masked ?? 'Not set'}><input className="input font-mono text-xs" type="password" placeholder="Leave blank to keep current ID" onChange={(e) => set('onesignal_app_id_masked', e.target.value)} /></Field>
+
+              <div className="border-b border-gray-100 pb-1 pt-2"><p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">SMTP (Email)</p></div>
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="SMTP Host"><input className="input font-mono text-xs" placeholder="smtp.gmail.com" value={form.smtp_host ?? ''} onChange={(e) => set('smtp_host', e.target.value)} /></Field>
+                <Field label="SMTP Port"><input className="input font-mono text-xs" type="number" placeholder="587" value={form.smtp_port ?? ''} onChange={(e) => set('smtp_port', parseInt(e.target.value))} /></Field>
+              </div>
+              <Field label="SMTP Username"><input className="input font-mono text-xs" placeholder="noreply@ccride.ng" value={form.smtp_user ?? ''} onChange={(e) => set('smtp_user', e.target.value)} /></Field>
+              <Field label="SMTP Password" hint={form.smtp_pass_masked ?? 'Not set'}><input className="input font-mono text-xs" type="password" placeholder="Leave blank to keep current password" onChange={(e) => set('smtp_pass_masked', e.target.value)} /></Field>
             </Fields>
           )}
 

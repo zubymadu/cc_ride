@@ -1,0 +1,62 @@
+<svg width="400" height="360" viewBox="0 0 400 360" fill="none" xmlns="http://www.w3.org/2000/svg">
+
+  <!-- Sky / background -->
+  <rect width="400" height="360" rx="24" fill="#EBF0FF"/>
+
+  <!-- Road -->
+  <rect x="0" y="280" width="400" height="80" rx="0" fill="#D0DAFF"/>
+  <!-- Road markings -->
+  <rect x="60"  y="314" width="50" height="8" rx="4" fill="#FFFFFF" opacity="0.7"/>
+  <rect x="175" y="314" width="50" height="8" rx="4" fill="#FFFFFF" opacity="0.7"/>
+  <rect x="290" y="314" width="50" height="8" rx="4" fill="#FFFFFF" opacity="0.7"/>
+
+  <!-- Car body -->
+  <rect x="90" y="218" width="220" height="68" rx="14" fill="#0047FF"/>
+
+  <!-- Car roof -->
+  <path d="M130 218 L155 170 Q162 160 172 160 L228 160 Q238 160 245 170 L270 218 Z" fill="#003ACC"/>
+
+  <!-- Windshield -->
+  <path d="M160 218 L178 177 Q183 170 192 170 L208 170 Q217 170 222 177 L240 218 Z" fill="#EBF0FF" opacity="0.9"/>
+
+  <!-- Left wheel -->
+  <circle cx="148" cy="286" r="28" fill="#001A80"/>
+  <circle cx="148" cy="286" r="14" fill="#FFFFFF"/>
+  <circle cx="148" cy="286" r="5"  fill="#0047FF"/>
+
+  <!-- Right wheel -->
+  <circle cx="252" cy="286" r="28" fill="#001A80"/>
+  <circle cx="252" cy="286" r="14" fill="#FFFFFF"/>
+  <circle cx="252" cy="286" r="5"  fill="#0047FF"/>
+
+  <!-- Headlight -->
+  <rect x="90" y="228" width="22" height="11" rx="5" fill="#EBF0FF"/>
+  <!-- Taillight -->
+  <rect x="288" y="228" width="22" height="11" rx="5" fill="#AEC3FF"/>
+
+  <!-- Building left -->
+  <rect x="20" y="160" width="50" height="120" rx="4" fill="#AEC3FF" opacity="0.6"/>
+  <rect x="28" y="170" width="12" height="12" rx="2" fill="#0047FF" opacity="0.4"/>
+  <rect x="48" y="170" width="12" height="12" rx="2" fill="#0047FF" opacity="0.4"/>
+  <rect x="28" y="192" width="12" height="12" rx="2" fill="#0047FF" opacity="0.4"/>
+  <rect x="48" y="192" width="12" height="12" rx="2" fill="#0047FF" opacity="0.4"/>
+  <rect x="28" y="214" width="12" height="12" rx="2" fill="#0047FF" opacity="0.4"/>
+  <rect x="48" y="214" width="12" height="12" rx="2" fill="#0047FF" opacity="0.4"/>
+
+  <!-- Building right -->
+  <rect x="330" y="140" width="50" height="140" rx="4" fill="#AEC3FF" opacity="0.6"/>
+  <rect x="338" y="152" width="12" height="12" rx="2" fill="#0047FF" opacity="0.4"/>
+  <rect x="358" y="152" width="12" height="12" rx="2" fill="#0047FF" opacity="0.4"/>
+  <rect x="338" y="174" width="12" height="12" rx="2" fill="#0047FF" opacity="0.4"/>
+  <rect x="358" y="174" width="12" height="12" rx="2" fill="#0047FF" opacity="0.4"/>
+
+  <!-- CC Ride badge on car -->
+  <rect x="172" y="228" width="56" height="22" rx="6" fill="#FFFFFF" opacity="0.95"/>
+  <text x="200" y="243" font-family="Arial" font-weight="800" font-size="11" fill="#0047FF" text-anchor="middle">CC RIDE</text>
+
+  <!-- Pin / location marker above car -->
+  <circle cx="200" cy="130" r="22" fill="#0047FF"/>
+  <circle cx="200" cy="128" r="10" fill="#FFFFFF"/>
+  <path d="M200 152 L193 138 L207 138 Z" fill="#0047FF"/>
+
+</svg>
