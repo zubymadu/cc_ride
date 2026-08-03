@@ -269,6 +269,36 @@ export async function getMyCompanyProfile(req: Request, res: Response) {
   }
 }
 
+// ─── GET /user/companies/wallets ──────────────────────────────────────────────
+//
+// Every active company an employee belongs to, with enough detail to render
+// as a selectable "pay with company wallet" card during ride booking. A user
+// can be an active employee of more than one company at once.
+
+export async function listMyCompanyWallets(req: Request, res: Response) {
+  try {
+    const userId = req.user.id
+
+    const memberships = await prisma.companyEmployee.findMany({
+      where:   { userId, isActive: true, company: { status: 'active' } },
+      include: { company: { select: { id: true, name: true, logoUrl: true, walletBalance: true } } },
+      orderBy: { joinedAt: 'asc' },
+    })
+
+    ok(res, memberships.map((m) => ({
+      company_id:      m.company.id,
+      company_name:    m.company.name,
+      logo_url:        m.company.logoUrl ?? null,
+      wallet_balance:  Number(m.company.walletBalance),
+      department_id:   m.departmentId?.toString() ?? null,
+      cost_centre_id:  m.costCentreId?.toString() ?? null,
+      role:            m.role,
+    })))
+  } catch (err) {
+    serverError(res, err)
+  }
+}
+
 // ─── POST /user/companies/leave ───────────────────────────────────────────────
 
 export async function leaveCompany(req: Request, res: Response) {

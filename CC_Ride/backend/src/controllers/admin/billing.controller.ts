@@ -3,16 +3,24 @@ import { z } from 'zod'
 import { prisma } from '../../lib/prisma'
 import { ok, serverError } from '../../lib/response'
 import { dec } from '../../lib/naira'
+import { assertCompanyScope, assertBranchScope, branchWhereFilter } from '../../lib/adminScope'
 
 // ─── GET /admin/billing/invoices ─────────────────────────────────────────────
 // Generates a virtual invoice per company per month from booking history
 
-export async function listInvoices(_req: Request, res: Response) {
+export async function listInvoices(req: Request, res: Response) {
   try {
+    const isSuperAdmin = !!req.admin?.isSuperAdmin
+
     // Group completed bookings by company + month
     const raw = await prisma.booking.groupBy({
       by:     ['companyId', 'createdAt'],
-      where:  { companyId: { not: null }, status: { in: ['completed', 'confirmed'] } },
+      where:  {
+        status: { in: ['completed', 'confirmed'] },
+        // Scoped (company/branch) admins only see their own organisation's invoices
+        companyId: isSuperAdmin ? { not: null } : (req.admin?.scopeCompanyId ?? '__none__'),
+        ...(isSuperAdmin ? {} : branchWhereFilter(req)),
+      },
       _sum:   { totalAmount: true, platformCommission: true },
       _count: { id: true },
     })
@@ -79,6 +87,8 @@ export async function listInvoices(_req: Request, res: Response) {
 export async function getInvoiceDetail(req: Request, res: Response) {
   try {
     const companyId = String(req.params.companyId)
+    if (!assertCompanyScope(req, res, companyId)) return
+
     const month     = String(req.params.month)      // YYYY-MM
     const [year, mon] = month.split('-').map(Number)
     const start = new Date(year, mon - 1, 1)
@@ -87,7 +97,10 @@ export async function getInvoiceDetail(req: Request, res: Response) {
     const [company, bookings] = await Promise.all([
       prisma.company.findUnique({ where: { id: companyId } }),
       prisma.booking.findMany({
-        where: { companyId, createdAt: { gte: start, lt: end }, status: { in: ['completed', 'confirmed'] } },
+        where: {
+          companyId, createdAt: { gte: start, lt: end }, status: { in: ['completed', 'confirmed'] },
+          ...branchWhereFilter(req),
+        },
         orderBy: { createdAt: 'asc' },
         include: {
           passenger:  { select: { name: true } },

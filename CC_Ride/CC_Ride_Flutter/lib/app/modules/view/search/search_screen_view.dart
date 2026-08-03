@@ -495,10 +495,7 @@ class _DestinationField extends StatelessWidget {
       },
       suggestionsCallback: (pattern) async {
         if (!controller.showSuggestions || pattern.trim().isEmpty) return [];
-        await controller.mapSuggetionControlle.mapApi(suggestkey: pattern);
-        final results =
-            controller.mapSuggetionControlle.mapApiModel?.results ?? [];
-        return results;
+        return controller.mapSuggetionControlle.mapApi(suggestkey: pattern);
       },
     );
   }

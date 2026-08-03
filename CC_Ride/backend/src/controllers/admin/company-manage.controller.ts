@@ -6,6 +6,9 @@ import { z } from 'zod'
 import { prisma } from '../../lib/prisma'
 import { ok, fail, serverError } from '../../lib/response'
 import { dec } from '../../lib/naira'
+import { assertCompanyScope } from '../../lib/adminScope'
+import { parseCsv } from '../../lib/csv'
+import { importDepartmentsForCompany, importEmployeesForCompany } from '../../lib/companyImport'
 import crypto from 'crypto'
 
 // ─── POST /admin/companies/create ────────────────────────────────────────────
@@ -49,7 +52,7 @@ export async function createCompany(req: Request, res: Response) {
         contactName:          data.contact_name,
         contactEmail:         data.contact_email,
         contactPhone:         data.contact_phone ?? null,
-        commissionRate:       data.commission_rate ?? null,
+        commissionRate:       req.admin?.isSuperAdmin ? (data.commission_rate ?? null) : null,
         monthlySubscription:  data.monthly_subscription ?? 50000,
         notes:                data.notes ?? null,
         status:               data.auto_approve ? 'active' : 'pending_approval',
@@ -77,6 +80,7 @@ const CreateDeptSchema = z.object({
 export async function createDepartment(req: Request, res: Response) {
   try {
     const companyId = String(req.params.id)
+    if (!assertCompanyScope(req, res, companyId)) return
     const { name, code } = CreateDeptSchema.parse(req.body)
 
     const company = await prisma.company.findUnique({ where: { id: companyId } })
@@ -98,6 +102,7 @@ export async function createDepartment(req: Request, res: Response) {
 export async function listDepartments(req: Request, res: Response) {
   try {
     const companyId = String(req.params.id)
+    if (!assertCompanyScope(req, res, companyId)) return
     const depts = await prisma.department.findMany({
       where:   { companyId, isActive: true },
       orderBy: { name: 'asc' },
@@ -117,6 +122,45 @@ export async function listDepartments(req: Request, res: Response) {
   }
 }
 
+// ─── POST /admin/companies/:id/departments/import ─────────────────────────────
+// multipart CSV — columns: name (required), code (optional)
+
+export async function importDepartments(req: Request, res: Response) {
+  try {
+    const companyId = String(req.params.id)
+    if (!assertCompanyScope(req, res, companyId)) return
+
+    const file = (req as any).file as Express.Multer.File | undefined
+    if (!file) { fail(res, 'CSV file required'); return }
+
+    const rows = parseCsv(file.buffer.toString('utf-8'))
+    const result = await importDepartmentsForCompany(companyId, rows)
+    ok(res, result, `Imported ${result.created} department(s)`)
+  } catch (err) {
+    serverError(res, err)
+  }
+}
+
+// ─── POST /admin/companies/:id/employees/import ───────────────────────────────
+// multipart CSV — columns: name, email (required); department, role, job_title,
+// monthly_spend_limit (optional).
+
+export async function importEmployees(req: Request, res: Response) {
+  try {
+    const companyId = String(req.params.id)
+    if (!assertCompanyScope(req, res, companyId)) return
+
+    const file = (req as any).file as Express.Multer.File | undefined
+    if (!file) { fail(res, 'CSV file required'); return }
+
+    const rows = parseCsv(file.buffer.toString('utf-8'))
+    const result = await importEmployeesForCompany(companyId, rows)
+    ok(res, result, `Imported ${result.created} employee(s)`)
+  } catch (err) {
+    serverError(res, err)
+  }
+}
+
 // ─── POST /admin/companies/:id/cost-centres ───────────────────────────────────
 
 const CreateCCSchema = z.object({
@@ -129,6 +173,7 @@ const CreateCCSchema = z.object({
 export async function createCostCentre(req: Request, res: Response) {
   try {
     const companyId = String(req.params.id)
+    if (!assertCompanyScope(req, res, companyId)) return
     const data = CreateCCSchema.parse(req.body)
 
     const company = await prisma.company.findUnique({ where: { id: companyId } })
@@ -160,6 +205,7 @@ export async function createCostCentre(req: Request, res: Response) {
 export async function listCostCentres(req: Request, res: Response) {
   try {
     const companyId = String(req.params.id)
+    if (!assertCompanyScope(req, res, companyId)) return
     const ccs = await prisma.costCentre.findMany({
       where:   { companyId, isActive: true },
       orderBy: { name: 'asc' },
@@ -206,6 +252,7 @@ const CreateRideSchema = z.object({
 export async function createCompanyRide(req: Request, res: Response) {
   try {
     const companyId = String(req.params.id)
+    if (!assertCompanyScope(req, res, companyId)) return
     const data      = CreateRideSchema.parse(req.body)
 
     const company = await prisma.company.findUnique({ where: { id: companyId } })

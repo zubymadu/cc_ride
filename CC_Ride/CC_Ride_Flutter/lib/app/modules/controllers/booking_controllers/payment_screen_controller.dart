@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'dart:developer';
 
 import 'package:carride/app/data/confing.dart';
+import 'package:carride/app/data/corporate_models.dart';
 import 'package:carride/app/data/data_store.dart';
 import 'package:carride/app/modules/controllers/booking_controllers/book_pricing_controller.dart';
 import 'package:carride/app/modules/controllers/payment/payment_gateway_list_controller.dart';
@@ -26,32 +27,80 @@ import 'package:webview_flutter/webview_flutter.dart';
 
 class PaymentScreenController extends GetxController {
 
-  // ── Corporate booking intercept ─────────────────────────────────────────
-  // True when the user belongs to a company (used to decide whether to show
-  // the "pay via organisation" option at all — kept for backward compat).
-  bool get isCorpEmployee =>
-      (getData.read('companyId') as String? ?? '').isNotEmpty;
+  // ── Corporate wallet payment (multi-company) ────────────────────────────
 
-  // True only when the user is BOTH a member of an active company
-  // membership (companyId is only ever populated server-side for active
-  // memberships — see legacyLogin) AND their own identity has been verified.
-  // This is what actually gates whether the "pay via organisation" option is
-  // tappable; isCorpEmployee alone just controls visibility of the row.
+  final RxList<CompanyWalletModel> _companyWallets = <CompanyWalletModel>[].obs;
+  List<CompanyWalletModel> get companyWallets => _companyWallets;
+
+  final RxBool _isLoadingWallets = false.obs;
+  bool get isLoadingWallets => _isLoadingWallets.value;
+
+  final RxString _selectedCompanyId = ''.obs;
+  String get selectedCompanyId => _selectedCompanyId.value;
+
+  CompanyWalletModel? get selectedCompanyWallet {
+    if (selectedCompanyId.isEmpty) return null;
+    for (final w in companyWallets) {
+      if (w.companyId == selectedCompanyId) return w;
+    }
+    return null;
+  }
+
+  // True when the user belongs to at least one active company — used to
+  // decide whether to show the "pay via organisation" section at all.
+  bool get isCorpEmployee => companyWallets.isNotEmpty;
+
+  // Whether the employee's identity is verified enough to actually use a
+  // company wallet (visibility vs. tappability of the option).
   bool get isAuthorizedForCorpPayment {
     if (!isCorpEmployee) return false;
     final user = getData.read('userLogin');
     return user != null && '${user['is_mobile_verify']}' == '1';
   }
 
-  // Whether the employee wants to charge this ride to their company.
-  final RxBool useCorpAccount = false.obs;
+  // Backward-compat: true whenever a company wallet is the active choice.
+  bool get useCorpAccount => selectedCompanyId.isNotEmpty;
+
+  void selectCompanyWallet(String? companyId) {
+    _selectedCompanyId.value = companyId ?? '';
+    if (_selectedCompanyId.value.isNotEmpty) {
+      bookPricingController.walletCalculation(false);
+    }
+    update();
+  }
+
+  Future<void> fetchCompanyWallets() async {
+    try {
+      _isLoadingWallets.value = true;
+      update();
+      final url = '${Confing.baseurl}${Confing.userCompanyWallets}';
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {
+          "Content-type": "application/json",
+          "Accept": "application/json",
+          "Authorization": "Bearer ${getData.read('token') ?? ''}",
+        },
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['Result'] == 'true') {
+          _companyWallets.value = (data['data'] as List)
+              .map((e) => CompanyWalletModel.fromJson(e))
+              .toList();
+        }
+      }
+    } catch (e) {
+      log(name: '=== fetchCompanyWallets error ===', '$e');
+    } finally {
+      _isLoadingWallets.value = false;
+      update();
+    }
+  }
 
   @override
   void onInit() {
     super.onInit();
-    // Default to corporate only when actually authorized to use it —
-    // otherwise the toggle would start "on" for a row the user can't tap.
-    if (isAuthorizedForCorpPayment) useCorpAccount.value = true;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       isLoading = false;
@@ -61,6 +110,7 @@ class PaymentScreenController extends GetxController {
         handleExternalWallet: handleExternalWallet,
       );
       paymentGatewayListController.paymentGatewayListApi();
+      fetchCompanyWallets();
       update();
     });
   }

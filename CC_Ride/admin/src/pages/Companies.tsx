@@ -5,12 +5,16 @@ import {
   ChevronDown, Users, Car, Percent, AlertTriangle,
   Plus, Layers, MapPin, Wallet, History, GitBranch,
   Globe, Edit2, ToggleLeft, ToggleRight, UserPlus,
+  ImagePlus, Upload,
 } from 'lucide-react'
-import { get, post, api } from '../lib/api'
+import { get, post, postForm, api } from '../lib/api'
 import { fmt, badge } from '../lib/utils'
+import { useAuthStore } from '../store/auth'
 import PageHeader from '../components/PageHeader'
 import EmptyState from '../components/EmptyState'
 import Modal from '../components/Modal'
+import FareEstimateBanner from '../components/FareEstimateBanner'
+import AddressAutocompleteInput from '../components/AddressAutocompleteInput'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -18,8 +22,8 @@ interface Company {
   id: string; name: string; registration_number: string
   contact_name: string; contact_email: string; contact_phone: string
   status: string; total_employees: number; rides_this_month: number
-  gmv_this_month: number; commission_rate: number; created_at: string
-  wallet_balance: number
+  gmv_this_month: number; commission_rate?: number; created_at: string
+  wallet_balance: number; logo_url?: string
 }
 interface CreditEntry {
   id: string; amount: number; balance_after: number
@@ -53,9 +57,59 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   )
 }
 
+// ─── Company logo uploader ────────────────────────────────────────────────────
+
+function LogoUploader({ company }: { company: Company }) {
+  const qc = useQueryClient()
+  const [preview, setPreview] = useState<string | null>(null)
+
+  const upload = useMutation({
+    mutationFn: (file: File) => {
+      const form = new FormData()
+      form.append('company_id', company.id)
+      form.append('logo', file)
+      return postForm(`/admin/companies/logo`, form)
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin-companies'] })
+      qc.invalidateQueries({ queryKey: ['admin-branding'] })
+    },
+  })
+
+  function onPick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setPreview(URL.createObjectURL(file))
+    upload.mutate(file)
+  }
+
+  return (
+    <div className="flex items-center gap-3 bg-white border border-gray-200 rounded-xl p-3">
+      <div className="w-10 h-10 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center overflow-hidden flex-shrink-0">
+        {preview || company.logo_url ? (
+          <img src={preview ?? company.logo_url} alt="Logo" className="w-full h-full object-cover" />
+        ) : (
+          <ImagePlus className="w-4 h-4 text-gray-300" />
+        )}
+      </div>
+      <div className="flex-1">
+        <p className="text-sm font-medium text-gray-800">Company logo</p>
+        <p className="text-xs text-gray-400">Shown on this organisation's console sidebar</p>
+      </div>
+      <label className="btn-secondary text-xs cursor-pointer flex items-center gap-1.5">
+        {upload.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+        Upload
+        <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" className="hidden"
+          onChange={onPick} disabled={upload.isPending} />
+      </label>
+    </div>
+  )
+}
+
 // ─── Create Company Modal ─────────────────────────────────────────────────────
 
 function CreateCompanyModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const isSuperAdmin = !!useAuthStore((s) => s.admin?.isSuperAdmin)
   const qc = useQueryClient()
   const [form, setForm] = useState({
     name: '', contact_name: '', contact_email: '', contact_phone: '',
@@ -67,7 +121,7 @@ function CreateCompanyModal({ open, onClose }: { open: boolean; onClose: () => v
   const create = useMutation({
     mutationFn: () => post('/admin/companies', {
       ...form,
-      commission_rate: form.commission_rate ? parseFloat(form.commission_rate) : undefined,
+      commission_rate: isSuperAdmin && form.commission_rate ? parseFloat(form.commission_rate) : undefined,
     }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['admin-companies'] })
@@ -130,9 +184,11 @@ function CreateCompanyModal({ open, onClose }: { open: boolean; onClose: () => v
         </div>
 
         <div className="grid grid-cols-2 gap-4">
-          <Field label="Commission Rate (%)">
-            <input className="input" type="number" min={0} max={50} step={0.5} value={form.commission_rate} onChange={f('commission_rate')} />
-          </Field>
+          {isSuperAdmin && (
+            <Field label="Commission Rate (%)">
+              <input className="input" type="number" min={0} max={50} step={0.5} value={form.commission_rate} onChange={f('commission_rate')} />
+            </Field>
+          )}
           <Field label="Notes (internal)">
             <input className="input" placeholder="Optional internal note" value={form.notes} onChange={f('notes')} />
           </Field>
@@ -180,11 +236,11 @@ function AddRideModal({ companyId, onClose }: { companyId: string; onClose: () =
     mutationFn: () => post(`/admin/companies/${companyId}/rides`, {
       driver_id:           form.driver_id,
       origin_address:      form.origin_address,
-      origin_lat:          parseFloat(form.origin_lat) || 6.5244,
-      origin_lng:          parseFloat(form.origin_lng) || 3.3792,
+      origin_lat:          parseFloat(form.origin_lat),
+      origin_lng:          parseFloat(form.origin_lng),
       destination_address: form.destination_address,
-      destination_lat:     parseFloat(form.destination_lat) || 6.6018,
-      destination_lng:     parseFloat(form.destination_lng) || 3.3515,
+      destination_lat:     parseFloat(form.destination_lat),
+      destination_lng:     parseFloat(form.destination_lng),
       scheduled_at:        form.scheduled_at,
       base_fare:           parseFloat(form.base_fare),
       available_seats:     parseInt(form.available_seats),
@@ -200,7 +256,9 @@ function AddRideModal({ companyId, onClose }: { companyId: string; onClose: () =
   const f = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
     setForm((p) => ({ ...p, [k]: e.target.value }))
 
-  const canSubmit = form.driver_id && form.origin_address && form.destination_address && form.scheduled_at && form.base_fare
+  const canSubmit = form.driver_id && form.origin_address && form.destination_address &&
+    form.origin_lat && form.origin_lng && form.destination_lat && form.destination_lng &&
+    form.scheduled_at && form.base_fare
 
   return (
     <Modal open={true} onClose={onClose} title="Add Company Ride" size="lg">
@@ -217,27 +275,18 @@ function AddRideModal({ companyId, onClose }: { companyId: string; onClose: () =
         </Field>
 
         <div className="grid grid-cols-2 gap-4">
-          <Field label="Pick-up Address *">
-            <input className="input" placeholder="e.g. Victoria Island, Lagos" value={form.origin_address} onChange={f('origin_address')} />
-          </Field>
-          <Field label="Drop-off Address *">
-            <input className="input" placeholder="e.g. Lekki Phase 1, Lagos" value={form.destination_address} onChange={f('destination_address')} />
-          </Field>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="Origin Lat, Lng (optional)">
-            <div className="flex gap-2">
-              <input className="input" placeholder="6.4281" value={form.origin_lat} onChange={f('origin_lat')} />
-              <input className="input" placeholder="3.4219" value={form.origin_lng} onChange={f('origin_lng')} />
-            </div>
-          </Field>
-          <Field label="Destination Lat, Lng (optional)">
-            <div className="flex gap-2">
-              <input className="input" placeholder="6.4547" value={form.destination_lat} onChange={f('destination_lat')} />
-              <input className="input" placeholder="3.5320" value={form.destination_lng} onChange={f('destination_lng')} />
-            </div>
-          </Field>
+          <AddressAutocompleteInput
+            label="Pick-up Address *"
+            placeholder="e.g. Victoria Island, Lagos"
+            address={form.origin_address}
+            onChange={(address, lat, lng) => setForm((p) => ({ ...p, origin_address: address, origin_lat: lat, origin_lng: lng }))}
+          />
+          <AddressAutocompleteInput
+            label="Drop-off Address *"
+            placeholder="e.g. Lekki Phase 1, Lagos"
+            address={form.destination_address}
+            onChange={(address, lat, lng) => setForm((p) => ({ ...p, destination_address: address, destination_lat: lat, destination_lng: lng }))}
+          />
         </div>
 
         <div className="grid grid-cols-3 gap-4">
@@ -254,6 +303,12 @@ function AddRideModal({ companyId, onClose }: { companyId: string; onClose: () =
           </Field>
         </div>
 
+        <FareEstimateBanner
+          baseFare={form.base_fare}
+          originLat={form.origin_lat} originLng={form.origin_lng}
+          destinationLat={form.destination_lat} destinationLng={form.destination_lng}
+        />
+
         <Field label="Trip Notes (optional)">
           <input className="input" placeholder="e.g. Airport pickup — check flight status" value={form.trip_notes} onChange={f('trip_notes')} />
         </Field>
@@ -267,6 +322,59 @@ function AddRideModal({ companyId, onClose }: { companyId: string; onClose: () =
         </div>
       </div>
     </Modal>
+  )
+}
+
+// ─── CSV import button (shared: departments / employees) ─────────────────────
+
+interface ImportResult { created: number; skipped: number; errors: string[] }
+
+function CsvImportButton({ label, hint, endpoint, onDone }: {
+  label: string; hint: string; endpoint: string; onDone: () => void
+}) {
+  const [result, setResult] = useState<ImportResult | null>(null)
+
+  const upload = useMutation({
+    mutationFn: (file: File) => {
+      const form = new FormData()
+      form.append('file', file)
+      return postForm<ImportResult>(endpoint, form)
+    },
+    onSuccess: (data) => { setResult(data); onDone() },
+  })
+
+  function onPick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setResult(null)
+    upload.mutate(file)
+    e.target.value = ''
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <label className="btn-secondary text-xs cursor-pointer flex items-center gap-1.5 whitespace-nowrap">
+          {upload.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+          {label}
+          <input type="file" accept=".csv" className="hidden" onChange={onPick} disabled={upload.isPending} />
+        </label>
+        <span className="text-xs text-gray-400">{hint}</span>
+      </div>
+      {upload.isError && (
+        <p className="text-xs text-red-600">{(upload.error as any)?.message ?? 'Import failed'}</p>
+      )}
+      {result && (
+        <div className="bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-xs">
+          <p className="font-medium text-gray-700">{result.created} created, {result.skipped} skipped</p>
+          {result.errors.length > 0 && (
+            <ul className="mt-1 space-y-0.5 text-gray-500 max-h-28 overflow-y-auto">
+              {result.errors.map((e, i) => <li key={i}>• {e}</li>)}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -311,6 +419,13 @@ function DepartmentsTab({ companyId }: { companyId: string }) {
           Add
         </button>
       </div>
+
+      <CsvImportButton
+        label="Import CSV"
+        hint="Columns: name, code (optional)"
+        endpoint={`/admin/companies/${companyId}/departments/import`}
+        onDone={() => qc.invalidateQueries({ queryKey: ['company-depts', companyId] })}
+      />
 
       {/* List */}
       {depts.length === 0 ? (
@@ -429,12 +544,11 @@ function CostCentresTab({ companyId }: { companyId: string }) {
 // ─── Sub-panel: Employees ────────────────────────────────────────────────────
 
 function EmployeeList({ companyId }: { companyId: string }) {
+  const qc = useQueryClient()
   const { data = [], isLoading } = useQuery<Employee[]>({
     queryKey: ['company-employees', companyId],
     queryFn:  () => get(`/admin/companies/${companyId}/employees`),
   })
-  if (isLoading) return <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-brand-500" /></div>
-  if (!data.length) return <p className="text-sm text-gray-400 py-4 text-center">No employees yet</p>
 
   const roleColor: Record<string, string> = {
     company_admin: 'bg-purple-100 text-purple-700', manager: 'bg-blue-100 text-blue-700',
@@ -443,23 +557,38 @@ function EmployeeList({ companyId }: { companyId: string }) {
   }
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead><tr className="text-left border-b border-gray-100">
-          {['Name','Email','Role','Joined','Status'].map((h) => <th key={h} className="pb-2 font-medium text-gray-500 text-xs">{h}</th>)}
-        </tr></thead>
-        <tbody className="divide-y divide-gray-50">
-          {data.map((e) => (
-            <tr key={e.id}>
-              <td className="py-2 font-medium text-gray-900">{e.name}</td>
-              <td className="py-2 text-gray-500 text-xs">{e.email}</td>
-              <td className="py-2"><span className={`badge text-xs ${roleColor[e.role] ?? 'bg-gray-100 text-gray-600'}`}>{e.role.replace('_', ' ')}</span></td>
-              <td className="py-2 text-gray-400 text-xs">{fmt.date(e.joined_at)}</td>
-              <td className="py-2"><span className={badge(e.is_active ? 'active' : 'inactive')}>{e.is_active ? 'Active' : 'Inactive'}</span></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div className="space-y-4">
+      <CsvImportButton
+        label="Import CSV"
+        hint="Columns: name, email, department, role, job_title, monthly_spend_limit"
+        endpoint={`/admin/companies/${companyId}/employees/import`}
+        onDone={() => qc.invalidateQueries({ queryKey: ['company-employees', companyId] })}
+      />
+
+      {isLoading ? (
+        <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-brand-500" /></div>
+      ) : !data.length ? (
+        <p className="text-sm text-gray-400 py-4 text-center">No employees yet</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead><tr className="text-left border-b border-gray-100">
+              {['Name','Email','Role','Joined','Status'].map((h) => <th key={h} className="pb-2 font-medium text-gray-500 text-xs">{h}</th>)}
+            </tr></thead>
+            <tbody className="divide-y divide-gray-50">
+              {data.map((e) => (
+                <tr key={e.id}>
+                  <td className="py-2 font-medium text-gray-900">{e.name}</td>
+                  <td className="py-2 text-gray-500 text-xs">{e.email}</td>
+                  <td className="py-2"><span className={`badge text-xs ${roleColor[e.role] ?? 'bg-gray-100 text-gray-600'}`}>{e.role.replace('_', ' ')}</span></td>
+                  <td className="py-2 text-gray-400 text-xs">{fmt.date(e.joined_at)}</td>
+                  <td className="py-2"><span className={badge(e.is_active ? 'active' : 'inactive')}>{e.is_active ? 'Active' : 'Inactive'}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   )
 }
@@ -540,6 +669,7 @@ function BranchesTab({ company }: { company: Company }) {
   const [showAddRegion, setShowAddRegion] = useState(false)
   const [editBranch, setEditBranch]       = useState<Branch | null>(null)
   const [showAdmins, setShowAdmins]       = useState<Branch | null>(null)
+  const [showFleet, setShowFleet]         = useState<Branch | null>(null)
 
   const { data: regions = [], isLoading: loadingRegions } = useQuery<Region[]>({
     queryKey: ['company-regions', company.id],
@@ -581,6 +711,9 @@ function BranchesTab({ company }: { company: Company }) {
           <button onClick={() => setShowAdmins(b)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-blue-600" title="Admins">
             <UserPlus className="w-3.5 h-3.5" />
           </button>
+          <button onClick={() => setShowFleet(b)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-brand-600" title="Fleet & Partnerships">
+            <Car className="w-3.5 h-3.5" />
+          </button>
           <button onClick={() => toggle.mutate(b)} className="p-1.5 rounded-lg hover:bg-gray-100" title={b.is_active ? 'Deactivate' : 'Activate'}>
             {b.is_active
               ? <ToggleRight className="w-4 h-4 text-green-500" />
@@ -611,6 +744,7 @@ function BranchesTab({ company }: { company: Company }) {
       {showAddRegion && <AddRegionModal companyId={company.id} onClose={() => { setShowAddRegion(false); qc.invalidateQueries({ queryKey: ['company-regions', company.id] }) }} />}
       {editBranch && <EditBranchModal branch={editBranch} companyId={company.id} regions={regions} onClose={() => { setEditBranch(null); qc.invalidateQueries({ queryKey: ['company-branches', company.id] }) }} />}
       {showAdmins && <BranchAdminsModal branch={showAdmins} companyId={company.id} onClose={() => setShowAdmins(null)} />}
+      {showFleet && <BranchFleetModal branch={showFleet} companyId={company.id} onClose={() => setShowFleet(null)} />}
 
       <div className="flex flex-wrap gap-2 justify-between items-center">
         <p className="text-sm text-gray-500">{branches.length} branch{branches.length !== 1 ? 'es' : ''} · {regions.length} region{regions.length !== 1 ? 's' : ''}</p>
@@ -832,6 +966,182 @@ function BranchAdminsModal({ branch, companyId, onClose }: { branch: Branch; com
   )
 }
 
+// ─── Branch fleet & partnerships modal ────────────────────────────────────────
+
+interface FleetVehicle { id: string; driver_id: string; driver_name: string; driver_mobile: string; model: string; type: string; license_plate: string; status: string }
+interface FleetDriver { id: string; name: string; mobile: string; email: string; status: string }
+interface PartnershipBranch { partnership_id: string; branch_id: string; branch_name: string; company_name: string; created_at: string }
+interface BranchSearchResult { branch_id: string; branch_name: string; branch_code: string | null; company_id: string; company_name: string }
+
+function BranchFleetModal({ branch, companyId, onClose }: { branch: Branch; companyId: string; onClose: () => void }) {
+  const qc = useQueryClient()
+  const [vehicleId, setVehicleId] = useState('')
+  const [driverId, setDriverId]   = useState('')
+  const [partnerQuery, setPartnerQuery]     = useState('')
+  const [partnerResults, setPartnerResults] = useState<BranchSearchResult[]>([])
+
+  const { data: fleet, isLoading: loadingFleet } = useQuery<{ vehicles: FleetVehicle[]; drivers: FleetDriver[] }>({
+    queryKey: ['branch-fleet', branch.id],
+    queryFn:  () => get(`/admin/companies/${companyId}/branches/${branch.id}/fleet`),
+  })
+  const { data: partnerships, isLoading: loadingPartnerships } = useQuery<{ shares_fleet_with: PartnershipBranch[]; receives_fleet_from: PartnershipBranch[] }>({
+    queryKey: ['branch-partnerships', branch.id],
+    queryFn:  () => get(`/admin/companies/${companyId}/branches/${branch.id}/partnerships`),
+  })
+
+  const invalidateFleet        = () => qc.invalidateQueries({ queryKey: ['branch-fleet', branch.id] })
+  const invalidatePartnerships = () => qc.invalidateQueries({ queryKey: ['branch-partnerships', branch.id] })
+
+  const assignVehicle = useMutation({
+    mutationFn: () => post(`/admin/companies/${companyId}/branches/${branch.id}/fleet/vehicles`, { vehicle_id: vehicleId }),
+    onSuccess:  () => { setVehicleId(''); invalidateFleet() },
+  })
+  const removeVehicle = useMutation({
+    mutationFn: (id: string) => post(`/admin/companies/${companyId}/branches/${branch.id}/fleet/vehicles/remove`, { vehicle_id: id }),
+    onSuccess:  invalidateFleet,
+  })
+  const assignDriver = useMutation({
+    mutationFn: () => post(`/admin/companies/${companyId}/branches/${branch.id}/fleet/drivers`, { driver_id: driverId }),
+    onSuccess:  () => { setDriverId(''); invalidateFleet() },
+  })
+  const removeDriver = useMutation({
+    mutationFn: (id: string) => post(`/admin/companies/${companyId}/branches/${branch.id}/fleet/drivers/remove`, { driver_id: id }),
+    onSuccess:  invalidateFleet,
+  })
+  const addPartnership = useMutation({
+    mutationFn: (partnerBranchId: string) => post(`/admin/companies/${companyId}/branches/${branch.id}/partnerships`, { partner_branch_id: partnerBranchId }),
+    onSuccess:  () => { setPartnerQuery(''); setPartnerResults([]); invalidatePartnerships() },
+  })
+  const revokePartnership = useMutation({
+    mutationFn: (partnershipId: string) => post(`/admin/companies/${companyId}/branches/${branch.id}/partnerships/revoke`, { partnership_id: partnershipId }),
+    onSuccess:  invalidatePartnerships,
+  })
+
+  async function searchPartners(q: string) {
+    setPartnerQuery(q)
+    if (q.trim().length < 2) { setPartnerResults([]); return }
+    const results = await get<BranchSearchResult[]>('/admin/branches/search', { q })
+    setPartnerResults(results.filter((r) => r.branch_id !== branch.id))
+  }
+
+  return (
+    <Modal open={true} onClose={onClose} title={`Fleet & Partnerships — ${branch.name}`} size="lg">
+      <div className="space-y-6">
+        {/* Pool vehicles */}
+        <div className="space-y-3">
+          <p className="text-sm font-semibold text-gray-700">Pool Vehicles</p>
+          {loadingFleet ? <Loader2 className="w-4 h-4 animate-spin text-brand-500" /> : (
+            <>
+              {(fleet?.vehicles.length ?? 0) === 0 ? (
+                <p className="text-xs text-gray-400">No pool vehicles assigned</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {fleet!.vehicles.map((v) => (
+                    <div key={v.id} className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2 text-xs">
+                      <Car className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                      <span className="font-medium text-gray-800">{v.license_plate}</span>
+                      <span className="text-gray-400">{v.model} · {v.driver_name}</span>
+                      <button onClick={() => removeVehicle.mutate(v.id)} className="ml-auto text-red-500 hover:text-red-700">Remove</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="flex gap-2">
+                <input className="input text-xs flex-1" placeholder="Vehicle ID" value={vehicleId} onChange={(e) => setVehicleId(e.target.value)} />
+                <button onClick={() => assignVehicle.mutate()} disabled={!vehicleId || assignVehicle.isPending} className="btn-secondary text-xs">Assign</button>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Pool drivers */}
+        <div className="space-y-3 border-t border-gray-100 pt-4">
+          <p className="text-sm font-semibold text-gray-700">Pool Drivers</p>
+          {loadingFleet ? null : (
+            <>
+              {(fleet?.drivers.length ?? 0) === 0 ? (
+                <p className="text-xs text-gray-400">No pool drivers assigned</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {fleet!.drivers.map((d) => (
+                    <div key={d.id} className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2 text-xs">
+                      <Users className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                      <span className="font-medium text-gray-800">{d.name}</span>
+                      <span className="text-gray-400">{d.mobile}</span>
+                      <button onClick={() => removeDriver.mutate(d.id)} className="ml-auto text-red-500 hover:text-red-700">Remove</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="flex gap-2">
+                <input className="input text-xs flex-1" placeholder="Driver user ID" value={driverId} onChange={(e) => setDriverId(e.target.value)} />
+                <button onClick={() => assignDriver.mutate()} disabled={!driverId || assignDriver.isPending} className="btn-secondary text-xs">Assign</button>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Partnerships — sharing out */}
+        <div className="space-y-3 border-t border-gray-100 pt-4">
+          <p className="text-sm font-semibold text-gray-700">Shares fleet with</p>
+          <p className="text-xs text-gray-400 -mt-2">Other branches (any participating organisation) allowed to book this branch's pool vehicles/drivers</p>
+          {loadingPartnerships ? <Loader2 className="w-4 h-4 animate-spin text-brand-500" /> : (
+            <>
+              {(partnerships?.shares_fleet_with.length ?? 0) === 0 ? (
+                <p className="text-xs text-gray-400">Not sharing with any other branch</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {partnerships!.shares_fleet_with.map((p) => (
+                    <div key={p.partnership_id} className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2 text-xs">
+                      <GitBranch className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                      <span className="font-medium text-gray-800">{p.branch_name}</span>
+                      <span className="text-gray-400">{p.company_name}</span>
+                      <button onClick={() => revokePartnership.mutate(p.partnership_id)} className="ml-auto text-red-500 hover:text-red-700">Revoke</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="relative">
+                <input className="input text-xs w-full" placeholder="Search branch or company to share with…"
+                  value={partnerQuery} onChange={(e) => searchPartners(e.target.value)} />
+                {partnerResults.length > 0 && (
+                  <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                    {partnerResults.map((r) => (
+                      <button key={r.branch_id} onClick={() => addPartnership.mutate(r.branch_id)}
+                        className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 flex flex-col">
+                        <span className="font-medium text-gray-800">{r.branch_name}</span>
+                        <span className="text-gray-400">{r.company_name}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Partnerships — receiving */}
+        {(partnerships?.receives_fleet_from.length ?? 0) > 0 && (
+          <div className="space-y-2 border-t border-gray-100 pt-4">
+            <p className="text-sm font-semibold text-gray-700">Receives fleet access from</p>
+            <div className="space-y-1.5">
+              {partnerships!.receives_fleet_from.map((p) => (
+                <div key={p.partnership_id} className="flex items-center gap-2 bg-blue-50 rounded-lg px-3 py-2 text-xs">
+                  <GitBranch className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" />
+                  <span className="font-medium text-gray-800">{p.branch_name}</span>
+                  <span className="text-gray-400">{p.company_name}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <button onClick={onClose} className="btn-secondary w-full text-sm">Close</button>
+      </div>
+    </Modal>
+  )
+}
+
 // ─── Credit Company Modal ─────────────────────────────────────────────────────
 
 function CreditModal({ company, onClose }: { company: Company; onClose: () => void }) {
@@ -976,6 +1286,7 @@ function CreditLedgerTab({ company }: { company: Company }) {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function Companies() {
+  const isSuperAdmin = !!useAuthStore((s) => s.admin?.isSuperAdmin)
   const [search, setSearch]         = useState('')
   const [tab, setTab]               = useState<'all'|'pending_approval'|'active'|'suspended'|'rejected'>('all')
   const [expanded, setExpanded]     = useState<string | null>(null)
@@ -1026,9 +1337,11 @@ export default function Companies() {
         title="Companies"
         sub={`${data.length} corporate clients${pending > 0 ? ` · ${pending} awaiting approval` : ''}`}
         action={
-          <button onClick={() => setShowCreate(true)} className="btn-primary text-sm">
-            <Plus className="w-4 h-4" /> New Company
-          </button>
+          isSuperAdmin ? (
+            <button onClick={() => setShowCreate(true)} className="btn-primary text-sm">
+              <Plus className="w-4 h-4" /> New Company
+            </button>
+          ) : undefined
         }
       />
 
@@ -1108,31 +1421,36 @@ export default function Companies() {
                             <div><p className="text-gray-400 text-xs mb-0.5">Phone</p><p className="font-medium">{c.contact_phone || '—'}</p></div>
                             <div><p className="text-gray-400 text-xs mb-0.5">Onboarded</p><p className="font-medium">{fmt.date(c.created_at)}</p></div>
                           </div>
-                          <div className="flex items-center gap-3 bg-white border border-gray-200 rounded-xl p-3">
-                            <Percent className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                            <label className="text-sm text-gray-600 font-medium">Commission rate</label>
-                            <input type="number" value={commVal} min={0} max={40} step={0.5}
-                              className="input w-20 text-center ml-auto"
-                              onChange={(e) => setCommission((p) => ({ ...p, [c.id]: e.target.value }))}
-                              onBlur={() => { const v = parseFloat(commVal); if (!isNaN(v) && v !== c.commission_rate) saveCommission.mutate({ id: c.id, rate: v }) }}
-                            />
-                            <span className="text-sm text-gray-400">% per ride</span>
-                          </div>
-                          <div className="flex flex-wrap gap-2">
-                            {c.status === 'pending_approval' && (
-                              <>
-                                <button onClick={() => action.mutate({ id: c.id, act: 'approve' })} disabled={action.isPending} className="btn-primary text-sm"><CheckCircle className="w-4 h-4" /> Approve</button>
-                                <button onClick={() => { if (confirm(`Reject ${c.name}?`)) action.mutate({ id: c.id, act: 'reject' }) }} disabled={action.isPending} className="btn-danger text-sm"><XCircle className="w-4 h-4" /> Reject</button>
-                              </>
-                            )}
-                            {c.status === 'active' && (
-                              <button onClick={() => { if (confirm(`Suspend ${c.name}?`)) action.mutate({ id: c.id, act: 'suspend' }) }} disabled={action.isPending}
-                                className="btn text-sm bg-orange-50 text-orange-600 border border-orange-200 hover:bg-orange-100">Suspend</button>
-                            )}
-                            {(c.status === 'suspended' || c.status === 'rejected') && (
-                              <button onClick={() => action.mutate({ id: c.id, act: 'activate' })} disabled={action.isPending} className="btn-primary text-sm"><CheckCircle className="w-4 h-4" /> Reinstate</button>
-                            )}
-                          </div>
+                          <LogoUploader company={c} />
+                          {isSuperAdmin && (
+                            <div className="flex items-center gap-3 bg-white border border-gray-200 rounded-xl p-3">
+                              <Percent className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                              <label className="text-sm text-gray-600 font-medium">Commission rate</label>
+                              <input type="number" value={commVal} min={0} max={40} step={0.5}
+                                className="input w-20 text-center ml-auto"
+                                onChange={(e) => setCommission((p) => ({ ...p, [c.id]: e.target.value }))}
+                                onBlur={() => { const v = parseFloat(commVal); if (!isNaN(v) && v !== c.commission_rate) saveCommission.mutate({ id: c.id, rate: v }) }}
+                              />
+                              <span className="text-sm text-gray-400">% per ride</span>
+                            </div>
+                          )}
+                          {isSuperAdmin && (
+                            <div className="flex flex-wrap gap-2">
+                              {c.status === 'pending_approval' && (
+                                <>
+                                  <button onClick={() => action.mutate({ id: c.id, act: 'approve' })} disabled={action.isPending} className="btn-primary text-sm"><CheckCircle className="w-4 h-4" /> Approve</button>
+                                  <button onClick={() => { if (confirm(`Reject ${c.name}?`)) action.mutate({ id: c.id, act: 'reject' }) }} disabled={action.isPending} className="btn-danger text-sm"><XCircle className="w-4 h-4" /> Reject</button>
+                                </>
+                              )}
+                              {c.status === 'active' && (
+                                <button onClick={() => { if (confirm(`Suspend ${c.name}?`)) action.mutate({ id: c.id, act: 'suspend' }) }} disabled={action.isPending}
+                                  className="btn text-sm bg-orange-50 text-orange-600 border border-orange-200 hover:bg-orange-100">Suspend</button>
+                              )}
+                              {(c.status === 'suspended' || c.status === 'rejected') && (
+                                <button onClick={() => action.mutate({ id: c.id, act: 'activate' })} disabled={action.isPending} className="btn-primary text-sm"><CheckCircle className="w-4 h-4" /> Reinstate</button>
+                              )}
+                            </div>
+                          )}
                         </div>
                       )}
                       {detailTab === 'employees'    && <EmployeeList companyId={c.id} />}

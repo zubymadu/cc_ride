@@ -32,6 +32,39 @@ class EmployeeManagementView extends GetView<EmployeeManagementController> {
           preferredSize: Size.fromHeight(1),
           child: Divider(height: 1, color: ccInputBorder),
         ),
+        actions: [
+          GetBuilder<EmployeeManagementController>(
+            builder: (c) => (c.isImportingEmployees || c.isImportingDepartments)
+                ? const Padding(
+                    padding: EdgeInsets.only(right: 16),
+                    child: SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: ccPrimary),
+                    ),
+                  )
+                : PopupMenuButton<String>(
+                    icon: const Icon(Icons.upload_file_outlined, color: ccNavyText),
+                    color: ccSurface,
+                    onSelected: (val) {
+                      if (val == 'employees') c.importEmployeesCsv();
+                      if (val == 'departments') c.importDepartmentsCsv();
+                    },
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(
+                        value: 'employees',
+                        child: Text('Import Employees (CSV)',
+                            style: TextStyle(color: ccNavyText, fontFamily: 'Inter')),
+                      ),
+                      PopupMenuItem(
+                        value: 'departments',
+                        child: Text('Import Departments (CSV)',
+                            style: TextStyle(color: ccNavyText, fontFamily: 'Inter')),
+                      ),
+                    ],
+                  ),
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: controller.showInviteSheet,
@@ -294,6 +327,35 @@ class EmployeeManagementView extends GetView<EmployeeManagementController> {
                         SizedBox(width: 8),
                         Text(
                           'Deactivate',
+                          style: TextStyle(
+                            color: ccNavyText,
+                            fontFamily: 'Inter',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              )
+            else
+              PopupMenuButton<String>(
+                onSelected: (val) {
+                  if (val == 'reactivate') {
+                    c.reactivateEmployee(employee.id, employee.name);
+                  }
+                },
+                color: ccSurface,
+                icon: const Icon(Icons.more_vert, color: ccSecondaryText),
+                itemBuilder: (_) => [
+                  PopupMenuItem(
+                    value: 'reactivate',
+                    child: Row(
+                      children: const [
+                        Icon(Icons.person_add_alt_outlined,
+                            color: ccPrimary, size: 18),
+                        SizedBox(width: 8),
+                        Text(
+                          'Reinstate & resend email',
                           style: TextStyle(
                             color: ccNavyText,
                             fontFamily: 'Inter',

@@ -3,8 +3,10 @@ import { z } from 'zod'
 import { prisma } from '../../lib/prisma'
 import { ok, fail, serverError } from '../../lib/response'
 import { dec } from '../../lib/naira'
-import crypto from 'crypto'
-import nodemailer from 'nodemailer'
+import { sendInviteEmail } from '../../lib/mailer'
+import { parseCsv } from '../../lib/csv'
+import { importDepartmentsForCompany, importEmployeesForCompany } from '../../lib/companyImport'
+import { findOrCreateStubUser } from '../../lib/stubUser'
 
 // ─── GET /corporate/employee/profile ─────────────────────────────────────────
 
@@ -142,27 +144,8 @@ export async function inviteEmployee(req: Request, res: Response) {
     const data       = InviteSchema.parse(req.body)
     const companyId  = req.companyId!
 
-    // Check if user exists
-    let user = await prisma.user.findFirst({
-      where: { email: data.email },
-    })
-
-    // Create stub user if email not registered yet
-    if (!user) {
-      const tempPassword = crypto.randomBytes(16).toString('hex')
-      const bcrypt = await import('bcryptjs')
-      user = await prisma.user.create({
-        data: {
-          name:         data.name,
-          email:        data.email,
-          mobile:       '',
-          countryCode:  '+234',
-          passwordHash: await bcrypt.hash(tempPassword, 12),
-          status:       'pending_verification',
-          referralCode: crypto.randomBytes(4).toString('hex').toUpperCase(),
-        },
-      })
-    }
+    // Find the user by email, or create a placeholder account for them
+    const user = await findOrCreateStubUser(data.name, data.email)
 
     // Check not already a member
     const existing = await prisma.companyEmployee.findFirst({
@@ -194,7 +177,7 @@ export async function inviteEmployee(req: Request, res: Response) {
     })
 
     // Send invitation email (fire-and-forget)
-    _sendInviteEmail(data.email, data.name, companyId).catch(console.error)
+    sendInviteEmail(data.email, data.name, companyId).catch(console.error)
 
     ok(res, { user_id: user.id }, 'Invitation sent successfully')
   } catch (err) {
@@ -225,24 +208,69 @@ export async function deactivateEmployee(req: Request, res: Response) {
   }
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── POST /corporate/employees/reactivate ─────────────────────────────────────
+// Reinstates a previously deactivated (terminated) employee and resends the
+// invite/download email so they can (re-)set up their account.
 
-async function _sendInviteEmail(email: string, name: string, companyId: string) {
-  if (!process.env.SMTP_HOST) return
+export async function reactivateEmployee(req: Request, res: Response) {
+  try {
+    const { employee_id } = req.body as { employee_id: string }
+    const companyId = req.companyId!
 
-  const settings = await prisma.platformSettings.findUnique({ where: { id: 1 } })
-  const company  = await prisma.company.findUnique({ where: { id: companyId }, select: { name: true } })
+    const membership = await prisma.companyEmployee.findFirst({
+      where:   { id: BigInt(employee_id), companyId },
+      include: { user: { select: { name: true, email: true } } },
+    })
+    if (!membership) { fail(res, 'Employee not found'); return }
+    if (membership.isActive) { fail(res, 'Employee is already active'); return }
 
-  const transporter = nodemailer.createTransport({
-    host:   process.env.SMTP_HOST,
-    port:   Number(process.env.SMTP_PORT ?? 587),
-    auth:   { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-  })
+    const m = membership as typeof membership & { user: { name: string; email: string | null } }
 
-  await transporter.sendMail({
-    from:    `"${settings?.appName ?? 'CC Ride'}" <${process.env.SMTP_FROM ?? 'noreply@ccride.ng'}>`,
-    to:      email,
-    subject: `You've been invited to ${company?.name ?? 'a company'} on CC Ride`,
-    html:    `<p>Hi ${name},</p><p>You have been added to ${company?.name} on CC Ride. Download the app to get started.</p>`,
-  })
+    await prisma.companyEmployee.update({
+      where: { id: membership.id },
+      data:  { isActive: true, deactivatedAt: null, joinedAt: new Date() },
+    })
+
+    if (m.user.email) {
+      sendInviteEmail(m.user.email, m.user.name, companyId).catch(console.error)
+    }
+
+    ok(res, { employee_id }, 'Employee reinstated and invite email resent')
+  } catch (err) {
+    serverError(res, err)
+  }
+}
+
+// ─── POST /corporate/departments/import ───────────────────────────────────────
+// multipart CSV — columns: name (required), code (optional)
+
+export async function importDepartmentsCsv(req: Request, res: Response) {
+  try {
+    const file = (req as any).file as Express.Multer.File | undefined
+    if (!file) { fail(res, 'CSV file required'); return }
+
+    const rows = parseCsv(file.buffer.toString('utf-8'))
+    const result = await importDepartmentsForCompany(req.companyId!, rows)
+    ok(res, result, `Imported ${result.created} department(s)`)
+  } catch (err) {
+    serverError(res, err)
+  }
+}
+
+// ─── POST /corporate/employees/import ─────────────────────────────────────────
+// multipart CSV — columns: name, email (required), department, role, job_title,
+// monthly_spend_limit (all optional besides name/email). Missing departments
+// named in the sheet are created automatically.
+
+export async function importEmployeesCsv(req: Request, res: Response) {
+  try {
+    const file = (req as any).file as Express.Multer.File | undefined
+    if (!file) { fail(res, 'CSV file required'); return }
+
+    const rows = parseCsv(file.buffer.toString('utf-8'))
+    const result = await importEmployeesForCompany(req.companyId!, rows)
+    ok(res, result, `Imported ${result.created} employee(s)`)
+  } catch (err) {
+    serverError(res, err)
+  }
 }

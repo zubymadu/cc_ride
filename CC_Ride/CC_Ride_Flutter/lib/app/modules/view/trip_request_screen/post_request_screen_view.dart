@@ -185,10 +185,8 @@ class PostRequestScreenView extends GetView<PostRequestScreenController> {
                           },
                   ),
                   suggestionsCallback: (pattern) async {
-                    await c.mapSuggetionControlle
+                    return c.mapSuggetionControlle
                         .mapApi(suggestkey: pattern);
-                    return c.mapSuggetionControlle.mapApiModel?.results ??
-                        [];
                   },
                   onSelected: (Result result) {
                     if (result.geometry?.location?.lat != null &&
@@ -244,10 +242,8 @@ class PostRequestScreenView extends GetView<PostRequestScreenController> {
                           },
                   ),
                   suggestionsCallback: (pattern) async {
-                    await c.mapSuggetionControlle
+                    return c.mapSuggetionControlle
                         .mapApi(suggestkey: pattern);
-                    return c.mapSuggetionControlle.mapApiModel?.results ??
-                        [];
                   },
                   onSelected: (Result result) {
                     if (result.geometry?.location?.lat != null &&

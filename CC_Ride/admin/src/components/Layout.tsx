@@ -5,8 +5,12 @@ import {
   Bell, CheckSquare, BarChart2, FileText,
 } from 'lucide-react'
 import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '../store/auth'
+import { get } from '../lib/api'
 import { cn } from '../lib/utils'
+
+interface Branding { company_id: string | null; company_name: string | null; logo_url: string | null }
 
 const NAV = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
@@ -28,6 +32,13 @@ export default function Layout() {
   const { admin, logout } = useAuthStore()
   const navigate = useNavigate()
 
+  const { data: branding } = useQuery<Branding>({
+    queryKey: ['admin-branding'],
+    queryFn:  () => get('/admin/branding'),
+    enabled:  !admin?.isSuperAdmin,
+    staleTime: 5 * 60 * 1000,
+  })
+
   function handleLogout() { logout(); navigate('/login') }
 
   return (
@@ -41,12 +52,21 @@ export default function Layout() {
 
         {/* Logo */}
         <div className="flex items-center gap-3 px-6 py-5 border-b border-white/10">
-          <div className="w-9 h-9 rounded-lg bg-brand-500 flex items-center justify-center shadow-card">
-            <Car className="w-4 h-4 text-white" />
-          </div>
+          {branding?.logo_url ? (
+            <img src={branding.logo_url} alt={branding.company_name ?? 'Company logo'}
+              className="w-9 h-9 rounded-lg object-cover shadow-card bg-white" />
+          ) : (
+            <div className="w-9 h-9 rounded-lg bg-brand-500 flex items-center justify-center shadow-card">
+              <Car className="w-4 h-4 text-white" />
+            </div>
+          )}
           <div>
-            <p className="text-white font-bold text-sm leading-none tracking-tight">CC Ride</p>
-            <p className="text-white/40 text-xs mt-0.5 font-medium">Admin Portal</p>
+            <p className="text-white font-bold text-sm leading-none tracking-tight">
+              {branding?.company_name ?? 'CC Ride'}
+            </p>
+            <p className="text-white/40 text-xs mt-0.5 font-medium">
+              {branding?.company_name ? 'Organisation Console' : 'Admin Portal'}
+            </p>
           </div>
           <button onClick={() => setOpen(false)} className="ml-auto lg:hidden text-white/40 hover:text-white">
             <X className="w-5 h-5" />

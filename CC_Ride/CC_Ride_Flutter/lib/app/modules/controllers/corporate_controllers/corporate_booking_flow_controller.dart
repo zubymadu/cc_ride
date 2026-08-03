@@ -134,12 +134,19 @@ class CorporateBookingFlowController extends GetxController {
 
   Future<void> _loadProfile() async {
     try {
-      // First populate from GetStorage (set during login)
-      companyId.value    = getData.read('companyId') ?? '';
-      companyName.value  = getData.read('companyName') ?? '';
-      departmentId.value = getData.read('departmentId') ?? '';
+      // The payment screen passes which company wallet the rider picked
+      // (they may belong to more than one); fall back to the single stored
+      // membership for any other entry point into this flow.
+      final args = Get.arguments as Map<String, dynamic>?;
+      final selectedCompanyId = args?['company_id'] as String?;
+
+      companyId.value    = (selectedCompanyId != null && selectedCompanyId.isNotEmpty)
+          ? selectedCompanyId
+          : (getData.read('companyId') ?? '');
+      companyName.value  = args?['company_name'] as String? ?? getData.read('companyName') ?? '';
+      departmentId.value = args?['department_id'] as String? ?? getData.read('departmentId') ?? '';
       departmentName.value = getData.read('departmentName') ?? '';
-      costCentreId.value = getData.read('costCentreId') ?? '';
+      costCentreId.value = args?['cost_centre_id'] as String? ?? getData.read('costCentreId') ?? '';
       costCentreName.value = getData.read('costCentreName') ?? '';
       employeeRole.value = getData.read('employeeRole') ?? 'employee';
 

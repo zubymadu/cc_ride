@@ -1,10 +1,43 @@
 // Corporate data models for CC Ride
 
+// ─── Company wallets (payment method selection) ────────────────────────────────
+
+class CompanyWalletModel {
+  final String companyId;
+  final String companyName;
+  final String? logoUrl;
+  final double walletBalance;
+  final String? departmentId;
+  final String? costCentreId;
+  final String role;
+
+  CompanyWalletModel({
+    required this.companyId,
+    required this.companyName,
+    this.logoUrl,
+    required this.walletBalance,
+    this.departmentId,
+    this.costCentreId,
+    required this.role,
+  });
+
+  factory CompanyWalletModel.fromJson(Map<String, dynamic> json) => CompanyWalletModel(
+        companyId: json['company_id'] ?? '',
+        companyName: json['company_name'] ?? '',
+        logoUrl: json['logo_url'],
+        walletBalance: double.tryParse('${json['wallet_balance']}') ?? 0,
+        departmentId: json['department_id'],
+        costCentreId: json['cost_centre_id'],
+        role: json['role'] ?? 'employee',
+      );
+}
+
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
 class CorporateDashboardModel {
   final String companyName;
   final String companyId;
+  final String companyLogoUrl;
   final double monthlyBudget;
   final double monthlySpent;
   final int totalEmployees;
@@ -18,6 +51,7 @@ class CorporateDashboardModel {
   CorporateDashboardModel({
     required this.companyName,
     required this.companyId,
+    required this.companyLogoUrl,
     required this.monthlyBudget,
     required this.monthlySpent,
     required this.totalEmployees,
@@ -33,6 +67,7 @@ class CorporateDashboardModel {
     return CorporateDashboardModel(
       companyName: json['company_name'] ?? '',
       companyId: json['company_id'] ?? '',
+      companyLogoUrl: json['company_logo_url'] ?? '',
       monthlyBudget: double.tryParse('${json['monthly_budget']}') ?? 0,
       monthlySpent: double.tryParse('${json['monthly_spent']}') ?? 0,
       totalEmployees: int.tryParse('${json['total_employees']}') ?? 0,
@@ -168,6 +203,22 @@ class DepartmentModel {
         id: '${json['id']}',
         name: json['name'] ?? '',
         code: json['code'] ?? '',
+      );
+}
+
+// ─── CSV import ───────────────────────────────────────────────────────────────
+
+class ImportResultModel {
+  final int created;
+  final int skipped;
+  final List<String> errors;
+
+  ImportResultModel({required this.created, required this.skipped, required this.errors});
+
+  factory ImportResultModel.fromJson(Map<String, dynamic> json) => ImportResultModel(
+        created: int.tryParse('${json['created']}') ?? 0,
+        skipped: int.tryParse('${json['skipped']}') ?? 0,
+        errors: (json['errors'] as List? ?? []).map((e) => '$e').toList(),
       );
 }
 

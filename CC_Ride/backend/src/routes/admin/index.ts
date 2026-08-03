@@ -1,11 +1,13 @@
 import { Router } from 'express'
-import { requireAdmin } from '../../middleware/adminAuth'
+import { requireAdmin, requireSuperAdmin } from '../../middleware/adminAuth'
+import { logoUpload, csvUpload } from '../../lib/uploads'
 import { adminLogin }                               from '../../controllers/admin/auth.controller'
 import { getOverview }                              from '../../controllers/admin/overview.controller'
 import { listUsers, userAction }                    from '../../controllers/admin/users.controller'
 import { listDrivers, approveDriver, updateDriverStatus, listRides, listLiveRides,
          createDriver, createRide, livePositions }  from '../../controllers/admin/drivers.controller'
-import { listCompanies, companyAction, updateCommission, listCompanyEmployees, listCompanyRides, cancelRide }
+import { listCompanies, companyAction, updateCommission, listCompanyEmployees, listCompanyRides, cancelRide,
+         uploadCompanyLogo, getBranding }
                                                     from '../../controllers/admin/companies.controller'
 import { getPaymentSummary, listTransactions, listPayouts }
                                                     from '../../controllers/admin/payments.controller'
@@ -13,7 +15,7 @@ import { processPayout }                            from '../../controllers/paym
 import {
   createCompany, createDepartment, listDepartments,
   createCostCentre, listCostCentres, createCompanyRide,
-  listAvailableDrivers,
+  listAvailableDrivers, importDepartments, importEmployees,
 } from '../../controllers/admin/company-manage.controller'
 import { listPendingApprovals, decideApproval }      from '../../controllers/admin/companies.controller'
 import { getAnalytics, getCompanyAnalytics }         from '../../controllers/admin/analytics.controller'
@@ -27,6 +29,14 @@ import {
   creditBranch, getBranchCreditLedger,
   listBranchAdmins, createBranchAdmin,
 } from '../../controllers/admin/branches.controller'
+import {
+  listBranchFleet, assignVehicleToBranch, removeVehicleFromBranch,
+  assignDriverToBranch, removeDriverFromBranch,
+} from '../../controllers/admin/fleet.controller'
+import {
+  listBranchPartnerships, createBranchPartnership, revokeBranchPartnership, searchBranches,
+} from '../../controllers/admin/partnerships.controller'
+import { searchPlaces } from '../../controllers/admin/places.controller'
 
 const router = Router()
 
@@ -38,6 +48,10 @@ router.use(requireAdmin)
 
 // Dashboard
 router.get('/overview', getOverview)
+
+// Address lookup (server-side proxy to Google Places — browsers can't call
+// the Places Web Service directly due to CORS)
+router.get('/places/search', searchPlaces)
 
 // Users
 router.get('/users',        listUsers)
@@ -55,14 +69,18 @@ router.post('/rides/create',        createRide)        // NEW — create standal
 
 // Companies
 router.get('/companies',                        listCompanies)
-router.post('/companies',                       createCompany)          // NEW — create company
-router.post('/companies/action',                companyAction)
-router.post('/companies/commission',            updateCommission)
+router.post('/companies',                       requireSuperAdmin, createCompany)          // NEW — create company
+router.post('/companies/action',                requireSuperAdmin, companyAction)
+router.post('/companies/commission',            requireSuperAdmin, updateCommission)
+router.post('/companies/logo',                  logoUpload.single('logo'), uploadCompanyLogo)
+router.get('/branding',                         getBranding)
 router.get('/companies/:id/employees',          listCompanyEmployees)
 router.get('/companies/:id/rides',              listCompanyRides)
 router.post('/companies/:id/rides',             createCompanyRide)      // NEW — add ride
 router.get('/companies/:id/departments',        listDepartments)        // NEW
 router.post('/companies/:id/departments',       createDepartment)       // NEW
+router.post('/companies/:id/departments/import', csvUpload.single('file'), importDepartments)
+router.post('/companies/:id/employees/import',   csvUpload.single('file'), importEmployees)
 router.get('/companies/:id/cost-centres',       listCostCentres)        // NEW
 router.post('/companies/:id/cost-centres',      createCostCentre)       // NEW
 router.post('/companies/:id/credit',            creditCompany)
@@ -76,6 +94,17 @@ router.post('/companies/:companyId/branches',         createBranch)
 router.patch('/companies/:companyId/branches/:branchId', updateBranch)
 router.post('/branches/:branchId/credit',             creditBranch)
 router.get('/branches/:branchId/credits',             getBranchCreditLedger)
+// Branch fleet (pool vehicles & drivers)
+router.get('/companies/:companyId/branches/:branchId/fleet',                listBranchFleet)
+router.post('/companies/:companyId/branches/:branchId/fleet/vehicles',        assignVehicleToBranch)
+router.post('/companies/:companyId/branches/:branchId/fleet/vehicles/remove', removeVehicleFromBranch)
+router.post('/companies/:companyId/branches/:branchId/fleet/drivers',         assignDriverToBranch)
+router.post('/companies/:companyId/branches/:branchId/fleet/drivers/remove',  removeDriverFromBranch)
+// Branch fleet-sharing partnerships
+router.get('/branches/search',                                              searchBranches)
+router.get('/companies/:companyId/branches/:branchId/partnerships',          listBranchPartnerships)
+router.post('/companies/:companyId/branches/:branchId/partnerships',         createBranchPartnership)
+router.post('/companies/:companyId/branches/:branchId/partnerships/revoke',  revokeBranchPartnership)
 // Branch / company admin users
 router.get('/companies/:companyId/admins',            listBranchAdmins)
 router.post('/companies/:companyId/admins',           createBranchAdmin)

@@ -2,15 +2,20 @@ import { Request, Response } from 'express'
 import { prisma } from '../../lib/prisma'
 import { ok, fail, serverError } from '../../lib/response'
 import { dec } from '../../lib/naira'
+import { assertCompanyScope, assertBranchScope, branchWhereFilter } from '../../lib/adminScope'
+import { refundCompanyWallet } from '../../lib/companyWallet'
 
 export async function listCompanies(req: Request, res: Response) {
   try {
     const { status, search } = req.query as Record<string, string>
     const now        = new Date()
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+    const isSuperAdmin = !!req.admin?.isSuperAdmin
 
     const companies = await prisma.company.findMany({
       where: {
+        // Scoped (company) admins only ever see their own organisation
+        ...(isSuperAdmin ? {} : { id: req.admin?.scopeCompanyId ?? '__none__' }),
         ...(status ? { status: status as any } : {}),
         ...(search ? {
           OR: [
@@ -43,9 +48,60 @@ export async function listCompanies(req: Request, res: Response) {
       total_employees:     c._count.employees,
       rides_this_month:    c.bookings.length,
       gmv_this_month:      c.bookings.reduce((s, b) => s + dec(b.totalAmount), 0),
-      commission_rate:     dec(c.commissionRate ?? 15),
+      logo_url:            c.logoUrl ?? '',
+      ...(isSuperAdmin ? { commission_rate: dec(c.commissionRate ?? 15) } : {}),
       created_at:          c.createdAt.toISOString(),
     })))
+  } catch (err) {
+    serverError(res, err)
+  }
+}
+
+// ─── POST /admin/companies/logo ───────────────────────────────────────────────
+// multipart/form-data: { company_id, logo (file) } — scoped admins can only
+// upload their own company's logo regardless of what company_id they send.
+
+export async function uploadCompanyLogo(req: Request, res: Response) {
+  try {
+    const file = (req as any).file as Express.Multer.File | undefined
+    if (!file) { fail(res, 'Logo image required'); return }
+
+    const isSuperAdmin = !!req.admin?.isSuperAdmin
+    const companyId = isSuperAdmin
+      ? String(req.body.company_id ?? '')
+      : (req.admin?.scopeCompanyId ?? '')
+
+    if (!companyId) { fail(res, 'company_id is required'); return }
+    if (!assertCompanyScope(req, res, companyId)) return
+
+    const logoUrl = `/api/uploads/company-logos/${file.filename}`
+    await prisma.company.update({ where: { id: companyId }, data: { logoUrl } })
+
+    ok(res, { company_id: companyId, logo_url: logoUrl }, 'Logo updated')
+  } catch (err) {
+    serverError(res, err)
+  }
+}
+
+// ─── GET /admin/branding ──────────────────────────────────────────────────────
+// Used by the console sidebar to show the logged-in organisation's own
+// branding. Super-admins get nulls back and the console falls back to the
+// default CC Ride mark.
+
+export async function getBranding(req: Request, res: Response) {
+  try {
+    if (req.admin?.isSuperAdmin || !req.admin?.scopeCompanyId) {
+      ok(res, { company_id: null, company_name: null, logo_url: null })
+      return
+    }
+
+    const company = await prisma.company.findUnique({
+      where:  { id: req.admin.scopeCompanyId },
+      select: { id: true, name: true, logoUrl: true },
+    })
+    if (!company) { ok(res, { company_id: null, company_name: null, logo_url: null }); return }
+
+    ok(res, { company_id: company.id, company_name: company.name, logo_url: company.logoUrl ?? null })
   } catch (err) {
     serverError(res, err)
   }
@@ -93,8 +149,9 @@ export async function updateCommission(req: Request, res: Response) {
 export async function listCompanyEmployees(req: Request, res: Response) {
   try {
     const companyId = String(req.params.id)
+    if (!assertCompanyScope(req, res, companyId)) return
     const employees = await prisma.companyEmployee.findMany({
-      where:   { companyId },
+      where:   { companyId, ...branchWhereFilter(req) },
       orderBy: [{ role: 'asc' }],
       include: { user: { select: { name: true, email: true, mobile: true, status: true } } },
     })
@@ -125,10 +182,12 @@ export async function listCompanyRides(req: Request, res: Response) {
   try {
     const companyId  = String(req.params.id)
     const { status } = req.query as Record<string, string>
+    if (!assertCompanyScope(req, res, companyId)) return
 
     const bookings = await prisma.booking.findMany({
       where: {
         companyId,
+        ...branchWhereFilter(req),
         ...(status && status !== 'all' ? { status: status as any } : {}),
       },
       orderBy: { createdAt: 'desc' },
@@ -172,6 +231,9 @@ export async function cancelRide(req: Request, res: Response) {
 
     const booking = await prisma.booking.findUnique({ where: { id: booking_id } })
     if (!booking) { fail(res, 'Booking not found'); return }
+    if (booking.companyId && !assertCompanyScope(req, res, booking.companyId)) return
+    if (!booking.companyId && !req.admin?.isSuperAdmin) { fail(res, 'Not authorised', 403); return }
+    if (booking.companyId && !assertBranchScope(req, res, booking.branchId)) return
 
     const cancellable = ['confirmed', 'pending', 'in_progress', 'processing']
     if (!cancellable.includes(booking.status)) {
@@ -205,8 +267,16 @@ export async function cancelRide(req: Request, res: Response) {
 
 export async function listPendingApprovals(req: Request, res: Response) {
   try {
+    const isSuperAdmin = !!req.admin?.isSuperAdmin
+
     const requests = await prisma.approvalRequest.findMany({
-      where:   { status: 'pending' },
+      where: {
+        status: 'pending',
+        // Scoped (company/branch) admins only see their own organisation's queue
+        ...(isSuperAdmin ? {} : {
+          workflow: { companyId: req.admin?.scopeCompanyId ?? '__none__', ...branchWhereFilter(req) },
+        }),
+      },
       orderBy: { createdAt: 'desc' },
       take:    100,
       include: {
@@ -263,29 +333,46 @@ export async function decideApproval(req: Request, res: Response) {
     // Find the admin user's corresponding User record (if linked)
     const request = await prisma.approvalRequest.findUnique({
       where:   { id: BigInt(request_id) },
-      include: { booking: { select: { id: true, status: true } } },
+      include: {
+        booking:  { select: { id: true, status: true, rideId: true, companyId: true, totalAmount: true, paymentGateway: true, seatsBooked: true } },
+        workflow: { select: { companyId: true, branchId: true } },
+      },
     })
     if (!request) { fail(res, 'Approval request not found'); return }
+    if (!assertCompanyScope(req, res, request.workflow.companyId)) return
+    if (!assertBranchScope(req, res, request.workflow.branchId)) return
     if (request.status !== 'pending') { fail(res, 'Request already decided'); return }
 
-    await prisma.$transaction([
-      prisma.approvalRequest.update({
+    await prisma.$transaction(async (tx) => {
+      await tx.approvalRequest.update({
         where: { id: BigInt(request_id) },
         data: {
           status:      action,
           decisionNote:note ?? null,
           decidedAt:   new Date(),
         },
-      }),
+      })
       // Also update the booking status accordingly
-      prisma.booking.update({
+      await tx.booking.update({
         where: { id: request.bookingId },
         data: {
           status: action === 'approved' ? 'confirmed' : 'cancelled',
           ...(action === 'rejected' ? { cancellationReason: note ?? 'Rejected by admin', cancelledAt: new Date() } : {}),
         },
-      }),
-    ])
+      })
+
+      if (action === 'rejected') {
+        // Restore the seat and, if this was charged to a company wallet
+        // up front, refund it.
+        await tx.ride.update({
+          where: { id: request.booking.rideId },
+          data:  { availableSeats: { increment: request.booking.seatsBooked } },
+        })
+        if (request.booking.paymentGateway === 'company_account' && request.booking.companyId) {
+          await refundCompanyWallet(tx, request.booking.companyId, Number(request.booking.totalAmount))
+        }
+      }
+    })
 
     ok(res, { request_id, action }, `Booking ${action}`)
   } catch (err) {

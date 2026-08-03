@@ -5,6 +5,7 @@ import 'package:carride/app/data/corporate_models.dart';
 import 'package:carride/app/data/data_store.dart';
 import 'package:carride/utils/cc_ds.dart';
 import 'package:carride/widgets/custom_widgets.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:http/http.dart' as http;
@@ -26,6 +27,12 @@ class EmployeeManagementController extends GetxController {
   final RxBool _isInviting = false.obs;
   bool get isInviting => _isInviting.value;
   set isInviting(bool v) => _isInviting.value = v;
+
+  final RxBool _isImportingEmployees = false.obs;
+  bool get isImportingEmployees => _isImportingEmployees.value;
+
+  final RxBool _isImportingDepartments = false.obs;
+  bool get isImportingDepartments => _isImportingDepartments.value;
 
   final RxList<EmployeeModel> _employees = <EmployeeModel>[].obs;
   List<EmployeeModel> get employees => _employees;
@@ -202,6 +209,158 @@ class EmployeeManagementController extends GetxController {
       isLoading = false;
       update();
     }
+  }
+
+  Future<void> reactivateEmployee(String employeeId, String name) async {
+    final confirmed = await Get.dialog<bool>(
+      AlertDialog(
+        backgroundColor: ccSurface,
+        title: const Text('Reinstate Employee',
+            style: TextStyle(
+                color: ccNavyText,
+                fontFamily: 'Inter',
+                fontWeight: FontWeight.w700)),
+        content: Text(
+            'Reinstate $name and resend them an activation email?',
+            style: const TextStyle(color: ccSecondaryText, fontFamily: 'Inter')),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(result: false),
+            child: const Text('Cancel',
+                style: TextStyle(color: ccSecondaryText, fontFamily: 'Inter')),
+          ),
+          TextButton(
+            onPressed: () => Get.back(result: true),
+            child: const Text('Reinstate',
+                style: TextStyle(color: ccPrimary, fontFamily: 'Inter', fontWeight: FontWeight.w600)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      isLoading = true;
+      update();
+      final body = {
+        "company_id": getData.read('companyId') ?? '',
+        "employee_id": employeeId,
+      };
+      final response = await http.post(
+        Uri.parse('${Confing.baseurl}${Confing.corporateReactivateEmployee}'),
+        headers: _headers,
+        body: jsonEncode(body),
+      );
+      final data = jsonDecode(response.body);
+      showToastMessage(data['ResponseMsg'] ?? 'Done');
+      fetchEmployees();
+    } catch (e) {
+      showToastMessage('Error: $e');
+    } finally {
+      isLoading = false;
+      update();
+    }
+  }
+
+  // ─── CSV import ────────────────────────────────────────────────────────────
+
+  Future<void> importEmployeesCsv() => _importCsv(
+        isEmployees: true,
+        endpoint: Confing.corporateEmployeesImport,
+        onStart: () { _isImportingEmployees.value = true; update(); },
+        onDone: () { _isImportingEmployees.value = false; update(); fetchEmployees(); },
+      );
+
+  Future<void> importDepartmentsCsv() => _importCsv(
+        isEmployees: false,
+        endpoint: Confing.corporateDepartmentsImport,
+        onStart: () { _isImportingDepartments.value = true; update(); },
+        onDone: () { _isImportingDepartments.value = false; update(); fetchDepartments(); },
+      );
+
+  Future<void> _importCsv({
+    required bool isEmployees,
+    required String endpoint,
+    required VoidCallback onStart,
+    required VoidCallback onDone,
+  }) async {
+    final picked = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['csv'],
+      withData: true,
+    );
+    final file = picked?.files.single;
+    if (file == null || file.bytes == null) return;
+
+    onStart();
+    try {
+      final uri = Uri.parse('${Confing.baseurl}$endpoint');
+      final request = http.MultipartRequest('POST', uri)
+        ..headers['Authorization'] = 'Bearer ${getData.read('token') ?? ''}'
+        ..fields['company_id'] = getData.read('companyId') ?? ''
+        ..files.add(http.MultipartFile.fromBytes('file', file.bytes!, filename: file.name));
+
+      final streamed = await request.send();
+      final response = await http.Response.fromStream(streamed);
+      log(name: '=== ImportCsv ===', response.body);
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200 && data['Result'] == 'true') {
+        final result = ImportResultModel.fromJson(data['data']);
+        _showImportResult(isEmployees ? 'Employees' : 'Departments', result);
+      } else {
+        showToastMessage(data['ResponseMsg'] ?? 'Import failed');
+      }
+    } catch (e) {
+      showToastMessage('Error: $e');
+      log(name: '=== ImportCsv error ===', '$e');
+    } finally {
+      onDone();
+    }
+  }
+
+  void _showImportResult(String label, ImportResultModel result) {
+    Get.dialog(
+      AlertDialog(
+        backgroundColor: ccSurface,
+        title: Text('$label imported',
+            style: const TextStyle(
+                color: ccNavyText, fontFamily: 'Inter', fontWeight: FontWeight.w700)),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('${result.created} created, ${result.skipped} skipped',
+                  style: const TextStyle(color: ccNavyText, fontFamily: 'Inter')),
+              if (result.errors.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Flexible(
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: result.errors
+                        .map((e) => Padding(
+                              padding: const EdgeInsets.only(bottom: 4),
+                              child: Text('• $e',
+                                  style: const TextStyle(
+                                      color: ccSecondaryText, fontFamily: 'Inter', fontSize: 12)),
+                            ))
+                        .toList(),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(),
+            child: const Text('OK',
+                style: TextStyle(color: ccPrimary, fontFamily: 'Inter', fontWeight: FontWeight.w600)),
+          ),
+        ],
+      ),
+    );
   }
 
   // ─── Filter / Search ───────────────────────────────────────────────────────

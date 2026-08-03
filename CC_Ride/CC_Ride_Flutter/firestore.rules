@@ -1,0 +1,104 @@
+rules_version = '2';
+
+// ─────────────────────────────────────────────────────────────────────────
+// IMPORTANT — read before editing
+//
+// The CC Ride app does NOT use Firebase Authentication anywhere (grep the
+// Flutter codebase for FirebaseAuth.signIn* — there are zero calls). Every
+// user is authenticated against the app's own Node/Express backend via a
+// JWT, and the Flutter client then talks to Firestore directly and
+// unauthenticated (request.auth is always null here).
+//
+// That means these rules CANNOT restrict reads/writes to "the right user"
+// the way Firestore rules normally would (there's no request.auth.uid to
+// check). What they CAN do — and what they do below — is:
+//   1. Shrink the open surface from "every current and future collection"
+//      (test mode) down to exactly the two collections this app uses.
+//   2. Reject writes that don't match the exact document shape the app
+//      actually produces, blocking arbitrary junk/abuse payloads.
+//   3. Deny everything else outright.
+//
+// This is a stopgap that keeps the app working past the 30-day test-mode
+// cutoff. It does NOT stop someone with the app's public Firebase config
+// (which ships inside the APK) from reading any chat or profile doc, since
+// there's no real identity check possible without Firebase Auth. The real
+// fix is to mint Firebase custom tokens from the backend on login (it
+// already knows who the user is) and have the Flutter app call
+// signInWithCustomToken, then tighten these rules to check request.auth.uid
+// — plus, separately, message_list_controller.dart currently lists the
+// *entire* CCRideChat collection and filters client-side by checking if the
+// doc ID contains the user's id; that query shape would also need to become
+// a `where('participants', 'array-contains', uid)` query before per-user
+// read rules could be enforced on it.
+// ─────────────────────────────────────────────────────────────────────────
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── CCRideUser/{userId} — profile + FCM token, keyed by app user id ──
+    // Written once at login (auth_firebase.dart) via a full .set(...).
+    match /CCRideUser/{userId} {
+      allow read: if true;
+      allow create, update: if isValidUserDoc(userId);
+      allow delete: if false;
+    }
+
+    // ── CCRideChat/{chatId} — chatId is "{smallerUserId}_{largerUserId}" ──
+    match /CCRideChat/{chatId} {
+      allow read: if true;
+      allow create, update: if isValidChatDoc();
+      allow delete: if true; // seating_plan_screen_controller.deleteOnlyChatRoom
+
+      match /message/{messageId} {
+        allow read: if true;
+        allow create: if isValidMessageDoc();
+        allow update: if false;
+        allow delete: if true; // seating_plan_screen_controller.deleteOnlyChatRoom
+      }
+    }
+
+    // Deny every other current and future collection outright.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // ── Validators ──────────────────────────────────────────────────────
+
+    function isValidUserDoc(userId) {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['email', 'name', 'number', 'pro_pic', 'token', 'uid'])
+        && d.uid is string && d.uid == userId
+        && d.name is string && d.name.size() > 0 && d.name.size() < 200
+        && d.email is string && d.email.size() < 320
+        && d.number is string && d.number.size() < 40
+        && d.pro_pic is string
+        && d.token is string;
+    }
+
+    function isValidChatDoc() {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['timeStamp']) && d.timeStamp is timestamp;
+    }
+
+    function isValidMessageDoc() {
+      let d = request.resource.data;
+      return d.senderid is string
+        && d.senderName is string && d.senderName.size() < 200
+        && d.reciverId is string
+        && d.timestamp is timestamp
+        && d.type in ['text', 'location']
+        && (
+          (d.type == 'text'
+            && d.keys().hasOnly(['message', 'reciverId', 'senderName', 'senderid', 'timestamp', 'type'])
+            && d.message is string && d.message.size() > 0 && d.message.size() < 4000)
+          ||
+          (d.type == 'location'
+            && d.keys().hasOnly(['message', 'reciverId', 'senderName', 'senderid', 'timestamp', 'type', 'lat', 'lng', 'address'])
+            && d.message is string
+            && d.lat is number && d.lat >= -90 && d.lat <= 90
+            && d.lng is number && d.lng >= -180 && d.lng <= 180
+            && d.address is string && d.address.size() < 500)
+        );
+    }
+  }
+}

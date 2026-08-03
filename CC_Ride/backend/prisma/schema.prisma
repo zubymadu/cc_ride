@@ -231,6 +231,7 @@ model AdminUser {
   generatedInvoices  Invoice[]
   companyCredits     CompanyCredit[]
   branchCredits      BranchCredit[]
+  branchPartnershipsCreated BranchPartnership[]
   scopeCompany       Company?       @relation("CompanyAdmins", fields: [scopeCompanyId], references: [id])
   scopeBranch        CompanyBranch? @relation("BranchAdmins", fields: [scopeBranchId], references: [id])
 
@@ -415,10 +416,18 @@ model DriverProfile {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt      @map("updated_at")
 
-  // Relations
-  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  documents DriverDocument[]
+  // Pool driver — set when this driver is employed to drive a company's own
+  // fleet, rather than an independent driver. Null for regular drivers.
+  poolCompanyId String? @db.Uuid @map("pool_company_id")
+  poolBranchId  BigInt? @map("pool_branch_id")
 
+  // Relations
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  documents   DriverDocument[]
+  poolCompany Company?         @relation(fields: [poolCompanyId], references: [id])
+  poolBranch  CompanyBranch?   @relation(fields: [poolBranchId], references: [id])
+
+  @@index([poolBranchId])
   @@map("driver_profiles")
 }
 
@@ -510,13 +519,21 @@ model Vehicle {
   createdAt    DateTime      @default(now()) @map("created_at")
   updatedAt    DateTime      @updatedAt      @map("updated_at")
 
-  // Relations
-  driver User         @relation(fields: [driverId], references: [id], onDelete: Cascade)
-  model  VehicleModel @relation(fields: [modelId],  references: [id])
-  type   VehicleType  @relation(fields: [typeId], references: [id])
-  color  VehicleColor @relation(fields: [colorId], references: [id])
-  rides  Ride[]
+  // Fleet ownership — null for a driver's personal vehicle. Set when this
+  // vehicle belongs to a company's own branch fleet ("pool" vehicle).
+  ownerCompanyId String? @db.Uuid @map("owner_company_id")
+  ownerBranchId  BigInt? @map("owner_branch_id")
 
+  // Relations
+  driver      User           @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  model       VehicleModel   @relation(fields: [modelId],  references: [id])
+  type        VehicleType    @relation(fields: [typeId], references: [id])
+  color       VehicleColor   @relation(fields: [colorId], references: [id])
+  rides       Ride[]
+  ownerCompany Company?      @relation(fields: [ownerCompanyId], references: [id])
+  ownerBranch  CompanyBranch? @relation(fields: [ownerBranchId], references: [id])
+
+  @@index([ownerBranchId])
   @@map("vehicles")
 }
 
@@ -941,6 +958,8 @@ model Company {
   regions           CompanyRegion[]
   branches          CompanyBranch[]
   adminUsers        AdminUser[]        @relation("CompanyAdmins")
+  poolDrivers       DriverProfile[]
+  ownedVehicles     Vehicle[]
 
   @@map("companies")
 }
@@ -991,10 +1010,35 @@ model CompanyBranch {
   invoices  Invoice[]
   adminUsers AdminUser[]  @relation("BranchAdmins")
   creditLedger BranchCredit[]
+  poolDrivers  DriverProfile[]
+  ownedVehicles Vehicle[]
+  // Partnerships where this branch is the one sharing its fleet out
+  sharesFleetWith   BranchPartnership[] @relation("PartnershipOwner")
+  // Partnerships where this branch has been granted access to another's fleet
+  receivesFleetFrom BranchPartnership[] @relation("PartnershipPartner")
 
   @@unique([companyId, code])
   @@index([companyId, regionId])
   @@map("company_branches")
+}
+
+/// One-directional grant: ownerBranch shares its pool driver/vehicle fleet
+/// with partnerBranch's employees. E.g. a Lagos branch can share with one
+/// partner org's branch while an Abuja branch shares with none.
+model BranchPartnership {
+  id              BigInt   @id @default(autoincrement())
+  ownerBranchId   BigInt   @map("owner_branch_id")
+  partnerBranchId BigInt   @map("partner_branch_id")
+  isActive        Boolean  @default(true) @map("is_active")
+  createdById     BigInt?  @map("created_by")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  ownerBranch   CompanyBranch @relation("PartnershipOwner",   fields: [ownerBranchId],   references: [id], onDelete: Cascade)
+  partnerBranch CompanyBranch @relation("PartnershipPartner", fields: [partnerBranchId], references: [id], onDelete: Cascade)
+  createdBy     AdminUser?    @relation(fields: [createdById], references: [id])
+
+  @@unique([ownerBranchId, partnerBranchId])
+  @@map("branch_partnerships")
 }
 
 model BranchCredit {

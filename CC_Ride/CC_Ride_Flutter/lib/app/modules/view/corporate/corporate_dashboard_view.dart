@@ -1,5 +1,6 @@
 // ignore_for_file: deprecated_member_use
 
+import 'package:carride/app/data/confing.dart';
 import 'package:carride/app/data/corporate_models.dart';
 import 'package:carride/app/modules/controllers/corporate_controllers/corporate_dashboard_controller.dart';
 import 'package:carride/utils/cc_ds.dart';
@@ -67,25 +68,32 @@ class CorporateDashboardView extends GetView<CorporateDashboardController> {
           icon: const Icon(Icons.arrow_back_rounded, color: ccNavyText),
           onPressed: () => Get.back(),
         ),
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              c.dashData?.companyName ?? 'Corporate Portal',
-              style: const TextStyle(
-                fontSize: 16,
-                fontFamily: 'Inter',
-                fontWeight: FontWeight.w700,
-                color: ccNavyText,
-              ),
-            ),
-            Text(
-              DateFormat('MMMM yyyy').format(DateTime.now()),
-              style: const TextStyle(
-                fontSize: 12,
-                fontFamily: 'Inter',
-                color: ccSecondaryText,
-              ),
+            _companyLogo(c),
+            const SizedBox(width: 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  c.dashData?.companyName ?? 'Corporate Portal',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontFamily: 'Inter',
+                    fontWeight: FontWeight.w700,
+                    color: ccNavyText,
+                  ),
+                ),
+                Text(
+                  DateFormat('MMMM yyyy').format(DateTime.now()),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontFamily: 'Inter',
+                    color: ccSecondaryText,
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -127,6 +135,51 @@ class CorporateDashboardView extends GetView<CorporateDashboardController> {
           ),
         ],
       );
+
+  Widget _companyLogo(CorporateDashboardController c) {
+    final logoPath = c.dashData?.companyLogoUrl ?? '';
+    return GestureDetector(
+      onTap: c.isUploadingLogo ? null : c.pickAndUploadLogo,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: ccBackground,
+              shape: BoxShape.circle,
+              border: Border.all(color: ccInputBorder),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: logoPath.isEmpty
+                ? const Icon(Icons.business_rounded, size: 18, color: ccSecondaryText)
+                : Image.network(
+                    '${Confing.imageurl}$logoPath',
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) =>
+                        const Icon(Icons.business_rounded, size: 18, color: ccSecondaryText),
+                  ),
+          ),
+          Positioned(
+            right: -2,
+            bottom: -2,
+            child: Container(
+              width: 14,
+              height: 14,
+              decoration: const BoxDecoration(color: ccPrimary, shape: BoxShape.circle),
+              child: c.isUploadingLogo
+                  ? const Padding(
+                      padding: EdgeInsets.all(2),
+                      child: CircularProgressIndicator(strokeWidth: 1.5, color: Colors.white),
+                    )
+                  : const Icon(Icons.edit, size: 9, color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _spendCard(CorporateDashboardController c) {
     final spent = c.dashData?.monthlySpent ?? 0;

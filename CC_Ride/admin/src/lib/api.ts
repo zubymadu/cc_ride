@@ -35,3 +35,10 @@ export async function post<T>(path: string, body?: unknown): Promise<T> {
   if (data.Result === 'false') throw new Error(data.ResponseMsg)
   return data.data as T
 }
+
+// Multipart helper — pass a FormData body (file uploads, CSV imports, etc.)
+export async function postForm<T>(path: string, form: FormData): Promise<T> {
+  const { data } = await api.post(path, form, { headers: { 'Content-Type': 'multipart/form-data' } })
+  if (data.Result === 'false') throw new Error(data.ResponseMsg)
+  return data.data as T
+}

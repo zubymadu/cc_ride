@@ -1,4 +1,6 @@
+import 'package:carride/app/data/data_store.dart';
 import 'package:carride/utils/cc_ds.dart';
+import 'package:carride/utils/fare_calculator.dart';
 import 'package:carride/utils/string.dart';
 import 'package:carride/widgets/custom_widgets.dart';
 import 'package:flutter/material.dart';
@@ -360,28 +362,60 @@ class SeatsDetailsScreenView extends GetView<SeatsDetailsScreenController> {
                         const Divider(color: ccInputBorder, height: 1),
                         const SizedBox(height: 14),
 
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: ccIceBlue,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.info_outline_rounded,
-                                  color: ccPrimary, size: 16),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  "${"Recommended".tr}: $currency${controller.postTripController.seatPrice} ${"or less per seat".tr}",
-                                  style: CCText.bodyMd
-                                      .copyWith(color: ccPrimary),
+                        Builder(builder: (_) {
+                          final seatPrice = double.tryParse(
+                                  controller.postTripController.seatPrice) ??
+                              0;
+                          final bookingFee = double.tryParse(
+                                  "${getData.read("booking_fee") ?? 0}") ??
+                              0;
+                          final estimate = estimateFare(
+                            baseFare: seatPrice,
+                            bookingFee: bookingFee,
+                          );
+                          return AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: ccIceBlue,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Icon(Icons.info_outline_rounded,
+                                    color: ccPrimary, size: 16),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        seatPrice > 0
+                                            ? "${"Passengers pay".tr} $currency${estimate.toStringAsFixed(2)} ${"per seat".tr}"
+                                            : "Enter a price to see the passenger estimate"
+                                                .tr,
+                                        style: CCText.bodyMd
+                                            .copyWith(color: ccPrimary),
+                                      ),
+                                      if (seatPrice > 0 && bookingFee > 0) ...[
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          "${"Includes".tr} $currency${bookingFee.toStringAsFixed(2)} ${"platform booking fee".tr}",
+                                          style: CCText.labelSm.copyWith(
+                                              color: ccPrimary
+                                                  .withOpacity(0.7)),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
                                 ),
-                              ),
-                            ],
-                          ),
-                        ),
+                              ],
+                            ),
+                          );
+                        }),
 
                         const SizedBox(height: 14),
 

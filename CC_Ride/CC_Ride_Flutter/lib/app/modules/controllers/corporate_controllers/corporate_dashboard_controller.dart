@@ -5,9 +5,11 @@ import 'package:carride/app/data/corporate_models.dart';
 import 'package:carride/app/data/data_store.dart';
 import 'package:carride/app/routes/app_pages.dart';
 import 'package:carride/theme/theme_colores.dart';
+import 'package:carride/widgets/custom_widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
 class CorporateDashboardController extends GetxController {
@@ -31,6 +33,11 @@ class CorporateDashboardController extends GetxController {
   final RxInt _selectedTab = 0.obs;
   int get selectedTab => _selectedTab.value;
   set selectedTab(int v) => _selectedTab.value = v;
+
+  final RxBool _isUploadingLogo = false.obs;
+  bool get isUploadingLogo => _isUploadingLogo.value;
+
+  final ImagePicker _picker = ImagePicker();
 
   // ─── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -63,6 +70,43 @@ class CorporateDashboardController extends GetxController {
       log(name: '=== CorporateDashboard error ===', '$e');
     } finally {
       isLoading = false;
+      update();
+    }
+  }
+
+  Future<void> pickAndUploadLogo() async {
+    final picked = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 90);
+    if (picked == null) return;
+    await _uploadLogo(picked);
+  }
+
+  Future<void> _uploadLogo(XFile file) async {
+    try {
+      _isUploadingLogo.value = true;
+      update();
+
+      final uri = Uri.parse('${Confing.baseurl}${Confing.corporateCompanyLogo}');
+      final request = http.MultipartRequest('POST', uri)
+        ..headers['Authorization'] = 'Bearer ${getData.read('token') ?? ''}'
+        ..fields['company_id'] = getData.read('companyId') ?? ''
+        ..files.add(await http.MultipartFile.fromPath('logo', file.path));
+
+      final streamed = await request.send();
+      final response = await http.Response.fromStream(streamed);
+      log(name: '=== UploadLogo ===', response.body);
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200 && data['Result'] == 'true') {
+        showToastMessage('Logo updated');
+        fetchDashboard();
+      } else {
+        showToastMessage(data['ResponseMsg'] ?? 'Failed to update logo');
+      }
+    } catch (e) {
+      showToastMessage('Error: $e');
+      log(name: '=== UploadLogo error ===', '$e');
+    } finally {
+      _isUploadingLogo.value = false;
       update();
     }
   }

@@ -12,13 +12,23 @@ class MapSuggetionControlle extends GetxController {
 
   String googleAPIKey = Confing.mapkey;
 
-  Future mapApi({required String suggestkey}) async {
+  /// Returns the matching places for [suggestkey] directly, so callers don't
+  /// need to read back the shared [mapApiModel] field — multiple location
+  /// fields on the same screen (origin/destination/stops) reuse this same
+  /// controller instance, and reading the shared field let a slow response
+  /// for one field clobber another field's results with a stale match.
+  Future<List<Result>> mapApi({required String suggestkey}) async {
+    final query = suggestkey.trim();
+    if (query.isEmpty) return [];
+
     Map<String, String> userHeader = {
       "Content-type": "application/json",
       "Accept": "application/json"
     };
+    // region=ng biases (does not restrict) results towards Nigeria, since
+    // that's where this app operates.
     var response = await http.get(
-      Uri.parse("https://maps.googleapis.com/maps/api/place/textsearch/json?query=$suggestkey%20pi&key=$googleAPIKey"),
+      Uri.parse("https://maps.googleapis.com/maps/api/place/textsearch/json?query=${Uri.encodeComponent(query)}&region=ng&key=$googleAPIKey"),
       headers: userHeader,
     );
 
@@ -30,6 +40,13 @@ class MapSuggetionControlle extends GetxController {
       mapApiModel = mapApiModelFromJson(response.body);
       isLoading = false;
       update();
-    } else {}
+      return mapApiModel?.results ?? [];
+    }
+
+    // Zero results / error — don't leave a previous query's matches showing.
+    mapApiModel = null;
+    isLoading = false;
+    update();
+    return [];
   }
 }

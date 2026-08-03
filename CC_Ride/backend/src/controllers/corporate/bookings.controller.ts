@@ -3,6 +3,8 @@ import { z } from 'zod'
 import { prisma } from '../../lib/prisma'
 import { ok, fail, serverError } from '../../lib/response'
 import { dec } from '../../lib/naira'
+import { canAccessVehicleFleet } from '../../lib/fleetAccess'
+import { debitCompanyWallet, refundCompanyWallet, WalletError } from '../../lib/companyWallet'
 import crypto from 'crypto'
 
 // ─── POST /corporate/bookings/check-policy ────────────────────────────────────
@@ -185,11 +187,28 @@ export async function createCorporateBooking(req: Request, res: Response) {
     const userId    = req.user.id
 
     // Verify ride exists
-    const ride = await prisma.ride.findUnique({ where: { id: data.trip_id } })
+    const ride = await prisma.ride.findUnique({
+      where:   { id: data.trip_id },
+      include: { vehicle: { select: { ownerBranchId: true } } },
+    })
     if (!ride) { fail(res, 'Ride not found'); return }
     if (ride.availableSeats < data.total_seat) {
       fail(res, `Only ${ride.availableSeats} seat(s) available`)
       return
+    }
+
+    // The employee's own branch — used both for branch-scoped visibility on
+    // the booking record and for the fleet-sharing check below.
+    const employee = await prisma.companyEmployee.findFirst({
+      where: { companyId, userId }, select: { branchId: true },
+    })
+    const employeeBranchId = employee?.branchId ?? null
+
+    if (ride.vehicle?.ownerBranchId) {
+      const allowed = await canAccessVehicleFleet(ride.vehicle.ownerBranchId, employeeBranchId)
+      if (!allowed) {
+        fail(res, 'This ride uses a company vehicle that is not available to your branch'); return
+      }
     }
 
     const platformCommission = await prisma.platformSettings
@@ -209,11 +228,17 @@ export async function createCorporateBooking(req: Request, res: Response) {
     let approvalRequestId: string | undefined
 
     const booking = await prisma.$transaction(async (tx) => {
+      // Charge the company wallet up front (same convention as the existing
+      // paymentStatus: 'successful' below — refunded via refundCompanyWallet
+      // if the request is later rejected/cancelled while still pending).
+      await debitCompanyWallet(tx, companyId, data.total_amount)
+
       const b = await tx.booking.create({
         data: {
           rideId:             data.trip_id,
           passengerId:        userId,
           companyId,
+          branchId:           employeeBranchId,
           departmentId:       deptId,
           costCentreId:       ccId,
           seatsBooked:        data.total_seat,
@@ -225,6 +250,7 @@ export async function createCorporateBooking(req: Request, res: Response) {
           platformCommission: commissionAmt,
           bookingFee:         data.booking_fees,
           bookingMethod:      'instant',
+          paymentGateway:     'company_account',
           paymentStatus:      'successful', // company account = no gateway charge
           status:             data.requires_approval ? 'pending' : 'confirmed',
           confirmedAt:        data.requires_approval ? null : new Date(),
@@ -346,6 +372,7 @@ export async function createCorporateBooking(req: Request, res: Response) {
         ? 'Booking submitted for approval'
         : 'Ride booked successfully')
   } catch (err) {
+    if (err instanceof WalletError) { fail(res, err.message); return }
     serverError(res, err)
   }
 }
@@ -364,21 +391,31 @@ export async function cancelApproval(req: Request, res: Response) {
     })
     if (!ar) { fail(res, 'Approval request not found or already decided'); return }
 
-    await prisma.$transaction([
-      prisma.approvalRequest.update({
+    const booking = await prisma.booking.findUnique({
+      where:  { id: ar.bookingId },
+      select: { rideId: true, companyId: true, totalAmount: true, paymentGateway: true },
+    })
+    if (!booking) { fail(res, 'Booking not found'); return }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.approvalRequest.update({
         where: { id: ar.id },
         data:  { status: 'rejected', decisionNote: 'Cancelled by requester', decidedAt: new Date() },
-      }),
-      prisma.booking.update({
+      })
+      await tx.booking.update({
         where: { id: ar.bookingId },
         data:  { status: 'cancelled', cancelledAt: new Date(), cancellationReason: 'Cancelled by requester' },
-      }),
+      })
       // Restore seat
-      prisma.ride.update({
-        where: { id: (await prisma.booking.findUnique({ where: { id: ar.bookingId }, select: { rideId: true } }))!.rideId },
+      await tx.ride.update({
+        where: { id: booking.rideId },
         data:  { availableSeats: { increment: 1 } },
-      }),
-    ])
+      })
+      // Refund the company wallet — the fare was charged up front at booking time
+      if (booking.paymentGateway === 'company_account' && booking.companyId) {
+        await refundCompanyWallet(tx, booking.companyId, Number(booking.totalAmount))
+      }
+    })
 
     ok(res, { approval_request_id }, 'Request cancelled')
   } catch (err) {

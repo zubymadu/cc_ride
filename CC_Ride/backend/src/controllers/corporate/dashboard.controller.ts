@@ -20,7 +20,7 @@ export async function getDashboard(req: Request, res: Response) {
       activeBudgets,
       recentBookings,
     ] = await Promise.all([
-      prisma.company.findUnique({ where: { id: companyId }, select: { name: true } }),
+      prisma.company.findUnique({ where: { id: companyId }, select: { name: true, logoUrl: true } }),
 
       prisma.companyEmployee.count({ where: { companyId } }),
 
@@ -102,6 +102,7 @@ export async function getDashboard(req: Request, res: Response) {
     ok(res, {
       company_name:       company?.name ?? '',
       company_id:         companyId,
+      company_logo_url:   company?.logoUrl ?? '',
       monthly_budget:     monthlyBudget,
       monthly_spent:      monthlySpent,
       total_employees:    totalEmployees,

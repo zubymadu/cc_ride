@@ -9,6 +9,8 @@ import { fmt, badge } from '../lib/utils'
 import PageHeader from '../components/PageHeader'
 import EmptyState from '../components/EmptyState'
 import Modal from '../components/Modal'
+import FareEstimateBanner from '../components/FareEstimateBanner'
+import AddressAutocompleteInput from '../components/AddressAutocompleteInput'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -183,42 +185,20 @@ function CreateRideModal({ open, onClose }: { open: boolean; onClose: () => void
         </div>
 
         {/* Origin */}
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Pickup Address *</label>
-          <input className={inp} placeholder="e.g. 14 Broad Street, Lagos Island" value={form.origin_address}
-            onChange={(e) => setForm((f) => ({ ...f, origin_address: e.target.value }))} />
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Pickup Latitude *</label>
-            <input className={inp} type="number" step="any" placeholder="6.4550" value={form.origin_lat}
-              onChange={(e) => setForm((f) => ({ ...f, origin_lat: e.target.value }))} />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Pickup Longitude *</label>
-            <input className={inp} type="number" step="any" placeholder="3.3841" value={form.origin_lng}
-              onChange={(e) => setForm((f) => ({ ...f, origin_lng: e.target.value }))} />
-          </div>
-        </div>
+        <AddressAutocompleteInput
+          label="Pickup Address *"
+          placeholder="e.g. 14 Broad Street, Lagos Island"
+          address={form.origin_address}
+          onChange={(address, lat, lng) => setForm((f) => ({ ...f, origin_address: address, origin_lat: lat, origin_lng: lng }))}
+        />
 
         {/* Destination */}
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Dropoff Address *</label>
-          <input className={inp} placeholder="e.g. 1 Airport Road, Ikeja" value={form.destination_address}
-            onChange={(e) => setForm((f) => ({ ...f, destination_address: e.target.value }))} />
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Dropoff Latitude *</label>
-            <input className={inp} type="number" step="any" placeholder="6.5774" value={form.destination_lat}
-              onChange={(e) => setForm((f) => ({ ...f, destination_lat: e.target.value }))} />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Dropoff Longitude *</label>
-            <input className={inp} type="number" step="any" placeholder="3.3218" value={form.destination_lng}
-              onChange={(e) => setForm((f) => ({ ...f, destination_lng: e.target.value }))} />
-          </div>
-        </div>
+        <AddressAutocompleteInput
+          label="Dropoff Address *"
+          placeholder="e.g. 1 Airport Road, Ikeja"
+          address={form.destination_address}
+          onChange={(address, lat, lng) => setForm((f) => ({ ...f, destination_address: address, destination_lat: lat, destination_lng: lng }))}
+        />
 
         {/* Schedule + Fare */}
         <div className="grid grid-cols-3 gap-3">
@@ -238,6 +218,12 @@ function CreateRideModal({ open, onClose }: { open: boolean; onClose: () => void
           <input className={inp} type="number" step="0.01" placeholder="2500.00" value={form.base_fare}
             onChange={(e) => setForm((f) => ({ ...f, base_fare: e.target.value }))} />
         </div>
+
+        <FareEstimateBanner
+          baseFare={form.base_fare}
+          originLat={form.origin_lat} originLng={form.origin_lng}
+          destinationLat={form.destination_lat} destinationLng={form.destination_lng}
+        />
 
         {/* Notes */}
         <div>

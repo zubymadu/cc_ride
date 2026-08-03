@@ -207,11 +207,8 @@ class MultipolylineMapScreenView
                                       );
                                     },
                                     suggestionsCallback: (pattern) async {
-                                      await controller.mapSuggetionControlle
-                                          .mapApi(suggestkey: pattern);
                                       return controller.mapSuggetionControlle
-                                              .mapApiModel?.results ??
-                                          [];
+                                          .mapApi(suggestkey: pattern);
                                     },
                                     onSelected: (Result result) {
                                       if (result.geometry?.location?.lat !=
@@ -289,11 +286,8 @@ class MultipolylineMapScreenView
                                       );
                                     },
                                     suggestionsCallback: (pattern) async {
-                                      await controller.mapSuggetionControlle
-                                          .mapApi(suggestkey: pattern);
                                       return controller.mapSuggetionControlle
-                                              .mapApiModel?.results ??
-                                          [];
+                                          .mapApi(suggestkey: pattern);
                                     },
                                     onSelected: (Result result) {
                                       if (result.geometry?.location?.lat !=
@@ -420,8 +414,7 @@ class MultipolylineMapScreenView
                                 },
                                 suggestionsCallback: (pattern) async {
                                   return controller.mapSuggetionControlle
-                                          .mapApiModel?.results ??
-                                      [];
+                                      .mapApi(suggestkey: pattern);
                                 },
                                 onSelected: (Result result) {
                                   if (result.geometry?.location?.lat !=

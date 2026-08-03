@@ -1,6 +1,7 @@
 import { Request, Response } from 'express'
 import { prisma } from '../../lib/prisma'
 import { ok, fail, serverError } from '../../lib/response'
+import { assertCompanyScope, assertBranchScope, assertNotBranchRestricted, ownBranchWhereFilter } from '../../lib/adminScope'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = prisma as any
@@ -11,7 +12,8 @@ const adminDb = prisma.adminUser as any
 
 export async function listRegions(req: Request, res: Response) {
   try {
-    const { companyId } = req.params
+    const companyId = String(req.params.companyId)
+    if (!assertCompanyScope(req, res, companyId)) return
     const regions = await db.companyRegion.findMany({
       where: { companyId },
       orderBy: { name: 'asc' },
@@ -27,7 +29,9 @@ export async function listRegions(req: Request, res: Response) {
 
 export async function createRegion(req: Request, res: Response) {
   try {
-    const { companyId } = req.params
+    const companyId = String(req.params.companyId)
+    if (!assertCompanyScope(req, res, companyId)) return
+    if (!assertNotBranchRestricted(req, res)) return
     const { name, code } = req.body as { name: string; code?: string }
     if (!name) { fail(res, 'Region name is required'); return }
 
@@ -45,9 +49,10 @@ export async function createRegion(req: Request, res: Response) {
 
 export async function listBranches(req: Request, res: Response) {
   try {
-    const { companyId } = req.params
+    const companyId = String(req.params.companyId)
+    if (!assertCompanyScope(req, res, companyId)) return
     const branches = await db.companyBranch.findMany({
-      where: { companyId },
+      where: { companyId, ...ownBranchWhereFilter(req) },
       orderBy: [{ regionId: 'asc' }, { name: 'asc' }],
       include: {
         region: { select: { id: true, name: true } },
@@ -80,7 +85,9 @@ export async function listBranches(req: Request, res: Response) {
 
 export async function createBranch(req: Request, res: Response) {
   try {
-    const { companyId } = req.params
+    const companyId = String(req.params.companyId)
+    if (!assertCompanyScope(req, res, companyId)) return
+    if (!assertNotBranchRestricted(req, res)) return
     const {
       name, code, region_id, address, city, state,
       contact_name, contact_phone, contact_email,
@@ -119,6 +126,13 @@ export async function createBranch(req: Request, res: Response) {
 export async function updateBranch(req: Request, res: Response) {
   try {
     const branchId = req.params.branchId as string
+    const existing = await db.companyBranch.findUnique({
+      where: { id: BigInt(branchId) }, select: { id: true, companyId: true },
+    })
+    if (!existing) { fail(res, 'Branch not found'); return }
+    if (!assertCompanyScope(req, res, existing.companyId)) return
+    if (!assertBranchScope(req, res, existing.id)) return
+
     const {
       name, code, region_id, address, city, state,
       contact_name, contact_phone, contact_email,
@@ -161,9 +175,11 @@ export async function creditBranch(req: Request, res: Response) {
 
     const branch = await db.companyBranch.findUnique({
       where: { id: BigInt(branchId) },
-      select: { walletBalance: true, name: true },
+      select: { id: true, companyId: true, walletBalance: true, name: true },
     })
     if (!branch) { fail(res, 'Branch not found'); return }
+    if (!assertCompanyScope(req, res, branch.companyId)) return
+    if (!assertBranchScope(req, res, branch.id)) return
 
     const newBalance = Number(branch.walletBalance) + Number(amount)
 
@@ -194,6 +210,13 @@ export async function getBranchCreditLedger(req: Request, res: Response) {
     const branchId = req.params.branchId as string
     const page  = Math.max(1, parseInt(req.query.page as string) || 1)
     const limit = 20
+
+    const branchMeta = await db.companyBranch.findUnique({
+      where: { id: BigInt(branchId) }, select: { id: true, companyId: true },
+    })
+    if (!branchMeta) { fail(res, 'Branch not found'); return }
+    if (!assertCompanyScope(req, res, branchMeta.companyId)) return
+    if (!assertBranchScope(req, res, branchMeta.id)) return
 
     const [branch, credits, total] = await Promise.all([
       db.companyBranch.findUnique({ where: { id: BigInt(branchId) }, select: { walletBalance: true } }),
@@ -231,7 +254,16 @@ export async function getBranchCreditLedger(req: Request, res: Response) {
 export async function listBranchAdmins(req: Request, res: Response) {
   try {
     const companyId = req.params.companyId as string
-    const branchId  = req.query.branch_id as string | undefined
+    if (!assertCompanyScope(req, res, companyId)) return
+
+    // Branch-scoped admins can only ever see admins for their own branch,
+    // regardless of what branch_id they pass.
+    const requestedBranchId = req.query.branch_id as string | undefined
+    const branchId = req.admin?.isSuperAdmin
+      ? requestedBranchId
+      : (req.admin?.scopeBranchId ?? requestedBranchId)
+    if (req.admin?.scopeBranchId && !assertBranchScope(req, res, branchId ? BigInt(branchId) : null)) return
+
     const admins = await adminDb.findMany({
       where: { scopeCompanyId: companyId, scopeBranchId: branchId ? BigInt(branchId) : undefined },
       select: { id: true, username: true, email: true, isActive: true, lastLoginAt: true, scopeBranchId: true, createdAt: true },
@@ -247,11 +279,19 @@ export async function listBranchAdmins(req: Request, res: Response) {
 
 export async function createBranchAdmin(req: Request, res: Response) {
   try {
-    const { companyId } = req.params
+    const companyId = String(req.params.companyId)
+    if (!assertCompanyScope(req, res, companyId)) return
+    if (!assertNotBranchRestricted(req, res)) return
+
     const { username, email, password, branch_id } = req.body as {
       username: string; email: string; password: string; branch_id?: string
     }
     if (!username || !email || !password) { fail(res, 'username, email and password are required'); return }
+
+    if (branch_id) {
+      const branch = await db.companyBranch.findUnique({ where: { id: BigInt(branch_id) }, select: { companyId: true } })
+      if (!branch || branch.companyId !== companyId) { fail(res, 'Branch does not belong to this company'); return }
+    }
 
     const bcrypt = await import('bcryptjs')
     const hash   = await bcrypt.default.hash(password, 12)
