@@ -89,84 +89,120 @@ class VehiclesScreenView extends GetView<VehiclesScreenController> {
                     child: Column(
                       children: [
                         // ── Vehicle section ──────────────────────────
-                        _Card(
-                          title: "Your Vehicle",
-                          subtitle:
-                              "Help riders recognize your car and set trip expectations.",
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // Hide vehicle toggle
-                              Row(
+                        // Pool drivers already picked their assigned vehicle
+                        // in the mode prompt — it isn't in their own vehicle
+                        // list (pool cars belong to the company, not them),
+                        // so it's shown read-only here instead of offering a
+                        // picker/hide-vehicle toggle that doesn't apply.
+                        if (c.isPoolDriverMode)
+                          _Card(
+                            title: "Your Vehicle",
+                            subtitle: "Assigned by your organisation for this trip.",
+                            child: Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: ccIceBlue,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Row(
                                 children: [
-                                  Obx(() => Checkbox(
-                                        checkColor: ccSurface,
-                                        activeColor: ccPrimary,
-                                        shape: RoundedRectangleBorder(
-                                            borderRadius:
-                                                BorderRadius.circular(4)),
-                                        side: const BorderSide(
-                                            color: ccInputBorder),
-                                        value: c.skipVehicle,
-                                        onChanged: (v) {
-                                          c.skipVehicle = v!;
-                                          c.update();
-                                          if (c.skipVehicle) {
-                                            c.postTripController
-                                                .skipVehicle = "1";
-                                            c.postTripController
-                                                .vehicleId = "";
-                                          } else {
-                                            c.selectedIndex = 0;
-                                            c.postTripController
-                                                .skipVehicle = "0";
-                                            c.postTripController
-                                                    .vehicleId =
-                                                "${c.dataGetApiModel!.vehicleData!.first.id}";
-                                          }
-                                        },
-                                      )),
-                                  const SizedBox(width: 4),
-                                  const Expanded(
+                                  const Icon(Icons.directions_car_filled_rounded,
+                                      color: ccPrimary, size: 20),
+                                  const SizedBox(width: 10),
+                                  Expanded(
                                     child: Text(
-                                      "Hide vehicle details from passengers",
-                                      style: CCText.bodyMd,
+                                      c.driverModeController.poolVehicles
+                                          .firstWhere(
+                                            (v) => v['id'] == c.postTripController.vehicleId,
+                                            orElse: () => const {'title': 'Pool vehicle'},
+                                          )['title'] ??
+                                          'Pool vehicle',
+                                      style: CCText.titleMd,
                                     ),
                                   ),
                                 ],
                               ),
-                              const SizedBox(height: 8),
-                              Obx(
-                                () => c.skipVehicle == false
-                                    ? const Vehicle()
-                                    : Container(
-                                        padding: const EdgeInsets.all(12),
-                                        decoration: BoxDecoration(
-                                          color: ccIceBlue,
-                                          borderRadius:
-                                              BorderRadius.circular(10),
-                                        ),
-                                        child: const Row(
-                                          children: [
-                                            Icon(
-                                                Icons
-                                                    .visibility_off_rounded,
-                                                color: ccSecondaryText,
-                                                size: 18),
-                                            SizedBox(width: 8),
-                                            Expanded(
-                                              child: Text(
-                                                "No vehicle will be shown on your trip",
-                                                style: CCText.bodyMd,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
+                            ),
+                          )
+                        else
+                          _Card(
+                            title: "Your Vehicle",
+                            subtitle:
+                                "Help riders recognize your car and set trip expectations.",
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // Hide vehicle toggle
+                                Row(
+                                  children: [
+                                    Obx(() => Checkbox(
+                                          checkColor: ccSurface,
+                                          activeColor: ccPrimary,
+                                          shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(4)),
+                                          side: const BorderSide(
+                                              color: ccInputBorder),
+                                          value: c.skipVehicle,
+                                          onChanged: (v) {
+                                            c.skipVehicle = v!;
+                                            c.update();
+                                            if (c.skipVehicle) {
+                                              c.postTripController
+                                                  .skipVehicle = "1";
+                                              c.postTripController
+                                                  .vehicleId = "";
+                                            } else {
+                                              c.selectedIndex = 0;
+                                              c.postTripController
+                                                  .skipVehicle = "0";
+                                              c.postTripController
+                                                      .vehicleId =
+                                                  "${c.dataGetApiModel!.vehicleData!.first.id}";
+                                            }
+                                          },
+                                        )),
+                                    const SizedBox(width: 4),
+                                    const Expanded(
+                                      child: Text(
+                                        "Hide vehicle details from passengers",
+                                        style: CCText.bodyMd,
                                       ),
-                              ),
-                            ],
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                Obx(
+                                  () => c.skipVehicle == false
+                                      ? const Vehicle()
+                                      : Container(
+                                          padding: const EdgeInsets.all(12),
+                                          decoration: BoxDecoration(
+                                            color: ccIceBlue,
+                                            borderRadius:
+                                                BorderRadius.circular(10),
+                                          ),
+                                          child: const Row(
+                                            children: [
+                                              Icon(
+                                                  Icons
+                                                      .visibility_off_rounded,
+                                                  color: ccSecondaryText,
+                                                  size: 18),
+                                              SizedBox(width: 8),
+                                              Expanded(
+                                                child: Text(
+                                                  "No vehicle will be shown on your trip",
+                                                  style: CCText.bodyMd,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
 
                         const SizedBox(height: 16),
 
@@ -354,8 +390,13 @@ class _SegmentedPicker extends StatelessWidget {
       child: Row(
         children: [
           for (int i = 0; i < items.length; i++) ...[
+            // Segments were previously sized 10:4:4:4 regardless of item
+            // count or label length — a ratio that only happened to look
+            // right for one specific label set (a long first option next to
+            // three short ones) and cramped every other combination into a
+            // disproportionately narrow slot. Equal flex sizes correctly for
+            // any label set.
             Expanded(
-              flex: i == 0 ? 10 : 4,
               child: GestureDetector(
                 onTap: () => onSelect(ids[i]),
                 child: Container(
@@ -377,6 +418,9 @@ class _SegmentedPicker extends StatelessWidget {
                   child: Center(
                     child: Text(
                       items[i],
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontFamily: 'Inter',
                         fontSize: 13,

@@ -2,6 +2,7 @@ import { Request, Response } from 'express'
 import { prisma } from '../../lib/prisma'
 import { ok, serverError } from '../../lib/response'
 import { dec } from '../../lib/naira'
+import { assertCompanyScope } from '../../lib/adminScope'
 
 // ─── GET /admin/analytics ─────────────────────────────────────────────────────
 
@@ -105,6 +106,7 @@ export async function getAnalytics(_req: Request, res: Response) {
 export async function getCompanyAnalytics(req: Request, res: Response) {
   try {
     const companyId = String(req.params.id)
+    if (!assertCompanyScope(req, res, companyId)) return
     const start30   = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
 
     const [bookings, deptBreakdown] = await Promise.all([

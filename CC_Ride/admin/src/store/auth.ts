@@ -6,6 +6,10 @@ interface AdminUser {
   username: string
   email: string
   isSuperAdmin: boolean
+  scopeCompanyId: string | null
+  scopeBranchId: string | null
+  companyName: string | null
+  companyLogoUrl: string | null
 }
 
 interface AuthState {

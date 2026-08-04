@@ -269,6 +269,50 @@ export async function getMyCompanyProfile(req: Request, res: Response) {
   }
 }
 
+// ─── GET /user/company-wallets ────────────────────────────────────────────────
+//
+// A user can be an active employee at more than one company at once (see
+// CompanyEmployee's @@unique([companyId, userId]) — deliberately not unique
+// on userId alone). getMyCompanyProfile above only ever returns ONE via
+// findFirst, so it can't drive a payment-method picker where every company
+// wallet the rider has access to should show up as a selectable card. This
+// lists all of them, each flagged with whether wallet payment is actually
+// usable right now (walletAccessEnabled AND within its access window).
+import { isWithinTimeWindow } from '../../lib/timeWindow'
+
+export async function getMyCompanyWallets(req: Request, res: Response) {
+  try {
+    const userId = req.user.id
+    const memberships = await prisma.companyEmployee.findMany({
+      where: { userId, isActive: true, company: { status: 'active' } },
+      // walletBalance is deliberately NOT selected — a passenger should
+      // never learn their employer's company-wide prepaid balance, only
+      // whether they personally can charge rides to it. Fetching a field
+      // that's simply not mapped into the response below is exactly the
+      // kind of thing a later refactor can accidentally start returning.
+      include: { company: { select: { id: true, name: true, logoUrl: true } } },
+      orderBy: { joinedAt: 'asc' },
+    })
+
+    const now = new Date()
+    ok(res, memberships.map((m) => ({
+      company_id:            m.companyId,
+      company_name:          m.company.name,
+      company_logo:          m.company.logoUrl ?? null,
+      wallet_access_enabled: m.walletAccessEnabled,
+      wallet_available_now:  m.walletAccessEnabled && isWithinTimeWindow({
+        daysOfWeek: m.walletAccessDaysOfWeek,
+        timeFrom:   m.walletAccessTimeFrom,
+        timeTo:     m.walletAccessTimeTo,
+      }, now),
+      monthly_spend_limit:   m.monthlySpendLimit != null ? m.monthlySpendLimit.toString() : null,
+      role:                  m.role,
+    })))
+  } catch (err) {
+    serverError(res, err)
+  }
+}
+
 // ─── POST /user/companies/leave ───────────────────────────────────────────────
 
 export async function leaveCompany(req: Request, res: Response) {

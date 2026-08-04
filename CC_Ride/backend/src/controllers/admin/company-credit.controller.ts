@@ -1,6 +1,7 @@
 import { Request, Response } from 'express'
 import { prisma } from '../../lib/prisma'
 import { ok, fail, serverError } from '../../lib/response'
+import { assertCompanyScope } from '../../lib/adminScope'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = prisma as any
@@ -47,7 +48,8 @@ export async function creditCompany(req: Request, res: Response) {
 
 export async function getCompanyCreditLedger(req: Request, res: Response) {
   try {
-    const { id } = req.params
+    const id = String(req.params.id)
+    if (!assertCompanyScope(req, res, id)) return
     const page  = Math.max(1, parseInt(req.query.page as string) || 1)
     const limit = 20
 

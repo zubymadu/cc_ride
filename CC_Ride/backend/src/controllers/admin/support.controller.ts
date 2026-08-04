@@ -1,6 +1,7 @@
 import { Request, Response } from 'express'
 import { prisma } from '../../lib/prisma'
 import { ok, fail, serverError } from '../../lib/response'
+import { notifyUserOfTicketUpdate } from '../../lib/notify'
 
 export async function listTickets(req: Request, res: Response) {
   try {
@@ -56,6 +57,14 @@ export async function replyToTicket(req: Request, res: Response) {
       }),
     ])
 
+    await notifyUserOfTicketUpdate({
+      userId:   ticket.userId,
+      ticketId: ticket_id,
+      subject:  ticket.subject,
+      kind:     'reply',
+      preview:  message,
+    })
+
     ok(res, { ticket_id }, 'Reply sent')
   } catch (err) {
     serverError(res, err)
@@ -65,10 +74,18 @@ export async function replyToTicket(req: Request, res: Response) {
 export async function resolveTicket(req: Request, res: Response) {
   try {
     const { ticket_id } = req.body as { ticket_id: string }
-    await prisma.supportTicket.update({
+    const ticket = await prisma.supportTicket.update({
       where: { id: ticket_id },
       data:  { status: 'resolved', resolvedAt: new Date(), updatedAt: new Date() },
     })
+
+    await notifyUserOfTicketUpdate({
+      userId:   ticket.userId,
+      ticketId: ticket_id,
+      subject:  ticket.subject,
+      kind:     'resolved',
+    })
+
     ok(res, { ticket_id }, 'Ticket resolved')
   } catch (err) {
     serverError(res, err)

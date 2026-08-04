@@ -176,10 +176,14 @@ class MultipolylineMapScreenView
                                         ctrl: ctrl,
                                         focusNode: focusNode,
                                         hint: 'From'.tr,
-                                        onChanged: (value) async {
-                                          await controller
-                                              .mapSuggetionControlle
-                                              .mapApi(suggestkey: value);
+                                        onChanged: (value) {
+                                          // suggestionsCallback below already
+                                          // fetches (debounced) results for
+                                          // this field — calling mapApi()
+                                          // again here fired an extra
+                                          // undebounced request per keystroke
+                                          // that could race and overwrite it
+                                          // with a stale response.
                                           controller.update();
                                         },
                                         validator: (value) {
@@ -256,10 +260,14 @@ class MultipolylineMapScreenView
                                         ctrl: ctrl,
                                         focusNode: focusNode,
                                         hint: 'To'.tr,
-                                        onChanged: (value) async {
-                                          await controller
-                                              .mapSuggetionControlle
-                                              .mapApi(suggestkey: value);
+                                        onChanged: (value) {
+                                          // suggestionsCallback below already
+                                          // fetches (debounced) results for
+                                          // this field — calling mapApi()
+                                          // again here fired an extra
+                                          // undebounced request per keystroke
+                                          // that could race and overwrite it
+                                          // with a stale response.
                                           controller.update();
                                         },
                                         validator: (value) {
@@ -369,9 +377,13 @@ class MultipolylineMapScreenView
                                     ctrl: textCtrl,
                                     focusNode: node,
                                     hint: 'Add bookings'.tr,
-                                    onChanged: (value) async {
-                                      await controller.mapSuggetionControlle
-                                          .mapApi(suggestkey: value);
+                                    onChanged: (value) {
+                                      // suggestionsCallback below already
+                                      // fetches (debounced) results for this
+                                      // field — calling mapApi() again here
+                                      // fired an extra undebounced request
+                                      // per keystroke that could race and
+                                      // overwrite it with a stale response.
                                       controller.update();
                                     },
                                     validator: (value) {
@@ -419,6 +431,14 @@ class MultipolylineMapScreenView
                                   );
                                 },
                                 suggestionsCallback: (pattern) async {
+                                  // Was returning whatever origin/destination
+                                  // last cached instead of searching for what
+                                  // was actually typed here — this is why a
+                                  // stop's autocomplete showed nothing (or
+                                  // stale results) and never let the user
+                                  // pick a location.
+                                  await controller.mapSuggetionControlle
+                                      .mapApi(suggestkey: pattern);
                                   return controller.mapSuggetionControlle
                                           .mapApiModel?.results ??
                                       [];

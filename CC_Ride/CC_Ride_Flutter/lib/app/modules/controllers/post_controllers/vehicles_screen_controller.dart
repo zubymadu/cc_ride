@@ -3,6 +3,7 @@ import 'dart:developer';
 
 import 'package:carride/app/data/confing.dart';
 import 'package:carride/app/data/data_store.dart';
+import 'package:carride/app/modules/controllers/driver_mode/driver_mode_controller.dart';
 import 'package:carride/app/modules/controllers/post_controllers/post_trip_controller.dart';
 import 'package:carride/app/modules/models/data_get_api_model.dart';
 import 'package:carride/theme/theme_colores.dart';
@@ -13,6 +14,13 @@ import 'package:http/http.dart' as http;
 
 class VehiclesScreenController extends GetxController {
   ThemeColores themeColores = Get.put(ThemeColores());
+  // The mode prompt already asked which pool vehicle they're driving — a
+  // Pool driver's vehicle is never in dataGetApiModel.vehicleData (that's
+  // only vehicles they personally own, driverId = them; pool cars belong to
+  // the company), so without this a Pool driver would find their assigned
+  // car simply doesn't appear as an option here at all.
+  DriverModeController get driverModeController => Get.find<DriverModeController>();
+  bool get isPoolDriverMode => driverModeController.mode == 'pool';
 
   @override
   void onInit() {
@@ -49,6 +57,7 @@ class VehiclesScreenController extends GetxController {
   Map<String, String> userHeader = {
     "Content-type": "application/json",
     "Accept": "application/json",
+    "Authorization": "Bearer ${getData.read('token') ?? ''}",
   };
 
   Future dataGetApi() async {
@@ -129,7 +138,9 @@ class VehiclesScreenController extends GetxController {
                 debugPrint("------ Post restrictionList ------- ${postTripController.restrictionList}");
               } else {
                 postTripController.skipVehicle = "0";
-                if (dataGetApiModel!.vehicleData!.isNotEmpty) {
+                if (isPoolDriverMode && driverModeController.vehicleId != null) {
+                  postTripController.vehicleId = driverModeController.vehicleId!;
+                } else if (dataGetApiModel!.vehicleData!.isNotEmpty) {
                   postTripController.vehicleId = "${dataGetApiModel!.vehicleData!.first.id}";
                 }
               }
@@ -138,7 +149,9 @@ class VehiclesScreenController extends GetxController {
               postTripController.backRowId = "${dataGetApiModel!.backSeatingData!.first.id}";
               postTripController.restrictionList = "";
               postTripController.skipVehicle = "0";
-              if (dataGetApiModel!.vehicleData!.isNotEmpty) {
+              if (isPoolDriverMode && driverModeController.vehicleId != null) {
+                postTripController.vehicleId = driverModeController.vehicleId!;
+              } else if (dataGetApiModel!.vehicleData!.isNotEmpty) {
                 postTripController.vehicleId = "${dataGetApiModel!.vehicleData!.first.id}";
               }
             }

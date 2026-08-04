@@ -168,6 +168,9 @@ class TripDatum {
     String? userProfile;
     String? userTitle;
     String? vehicleTitle;
+    String? routeId;
+    String? routeCode;
+    num? remainSeat;
 
     TripDatum({
         this.tripId,
@@ -193,6 +196,9 @@ class TripDatum {
         this.userProfile,
         this.userTitle,
         this.vehicleTitle,
+        this.routeId,
+        this.routeCode,
+        this.remainSeat,
     });
 
     factory TripDatum.fromJson(Map<String, dynamic> json) => TripDatum(
@@ -219,6 +225,9 @@ class TripDatum {
         userProfile: json["user_profile"],
         userTitle: json["user_title"],
         vehicleTitle: json["vehicle_title"],
+        routeId: json["route_id"],
+        routeCode: json["route_code"],
+        remainSeat: json["remain_seat"],
     );
 
     Map<String, dynamic> toJson() => {
@@ -245,5 +254,8 @@ class TripDatum {
         "user_profile": userProfile,
         "user_title": userTitle,
         "vehicle_title": vehicleTitle,
+        "route_id": routeId,
+        "route_code": routeCode,
+        "remain_seat": remainSeat,
     };
 }

@@ -63,6 +63,11 @@ class TripData {
     String? userProfile;
     String? userTitle;
     String? userId;
+    String? userBio;
+    String? userDob;
+    String? userJoined;
+    String? routeId;
+    String? routeCode;
     String? rideSchedule;
     String? vehicleTitle;
     String? vehicleImage;
@@ -103,6 +108,11 @@ class TripData {
         this.userProfile,
         this.userTitle,
         this.userId,
+        this.userBio,
+        this.userDob,
+        this.userJoined,
+        this.routeId,
+        this.routeCode,
         this.rideSchedule,
         this.vehicleTitle,
         this.vehicleImage,
@@ -144,6 +154,11 @@ class TripData {
         userProfile: json["user_profile"],
         userTitle: json["user_title"],
         userId: json["user_id"],
+        userBio: json["user_bio"],
+        userDob: json["user_dob"],
+        userJoined: json["user_joined"],
+        routeId: json["route_id"],
+        routeCode: json["route_code"],
         rideSchedule: json["ride_schedule"],
         vehicleTitle: json["vehicle_title"],
         vehicleImage: json["vehicle_image"],
@@ -185,6 +200,11 @@ class TripData {
         "user_profile": userProfile,
         "user_title": userTitle,
         "user_id": userId,
+        "user_bio": userBio,
+        "user_dob": userDob,
+        "user_joined": userJoined,
+        "route_id": routeId,
+        "route_code": routeCode,
         "ride_schedule": rideSchedule,
         "vehicle_title": vehicleTitle,
         "vehicle_image": vehicleImage,

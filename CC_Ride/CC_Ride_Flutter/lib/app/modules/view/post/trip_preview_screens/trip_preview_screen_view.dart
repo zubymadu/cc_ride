@@ -25,7 +25,7 @@ class TripPreviewScreenView extends GetView<TripPreviewScreenController> {
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
         if (c.backInBottombar == true) {
-          Get.offAllNamed(Routes.BOTTOM_BAR_SCREEN, arguments: 2);
+          Get.offAllNamed(Routes.BOTTOM_BAR_SCREEN, arguments: 1);
         } else {
           Get.back();
         }
@@ -52,6 +52,55 @@ class TripPreviewScreenView extends GetView<TripPreviewScreenController> {
           });
         },
         builder: (c) {
+          // Guard against the classic crash: isLoading finishes (success or
+          // failure) but the model stays null when the API call failed, and
+          // every section below force-unwraps it with `!`.
+          if (!c.isLoading && c.tripDetailsApiModel == null) {
+            return Scaffold(
+              backgroundColor: ccBackground,
+              appBar: AppBar(
+                backgroundColor: ccSurface,
+                elevation: 0,
+                leading: IconButton(
+                  icon: const Icon(Icons.arrow_back_rounded, color: ccNavyText),
+                  onPressed: () {
+                    if (c.backInBottombar == true) {
+                      Get.offAllNamed(Routes.BOTTOM_BAR_SCREEN, arguments: 1);
+                    } else {
+                      Get.back();
+                    }
+                  },
+                ),
+              ),
+              body: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.error_outline_rounded,
+                        color: ccSecondaryText, size: 40),
+                    const SizedBox(height: 12),
+                    const Text(
+                      "Unable to load trip details",
+                      style: TextStyle(fontFamily: 'Inter', color: ccSecondaryText),
+                    ),
+                    const SizedBox(height: 12),
+                    TextButton(
+                      onPressed: () {
+                        if (args["findtrip"] == true) {
+                          c.findTripDetailsApi(tripId: args["tripId"])
+                              .then(c.handleApiResponse);
+                        } else {
+                          c.tripDetailsApi(tripId: args["tripId"])
+                              .then(c.handleApiResponse);
+                        }
+                      },
+                      child: const Text("Retry"),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
           return Scaffold(
             backgroundColor: ccBackground,
             appBar: AppBar(
@@ -61,7 +110,7 @@ class TripPreviewScreenView extends GetView<TripPreviewScreenController> {
                 icon: const Icon(Icons.arrow_back_rounded, color: ccNavyText),
                 onPressed: () {
                   if (c.backInBottombar == true) {
-                    Get.offAllNamed(Routes.BOTTOM_BAR_SCREEN, arguments: 2);
+                    Get.offAllNamed(Routes.BOTTOM_BAR_SCREEN, arguments: 1);
                   } else {
                     Get.back();
                   }

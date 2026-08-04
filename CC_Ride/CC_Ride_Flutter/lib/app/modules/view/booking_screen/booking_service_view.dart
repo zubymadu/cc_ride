@@ -37,7 +37,7 @@ class BookingServiceView extends GetView<BookingServiceController> {
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
         child: CCButton(
           label: "I Understand, Continue",
-          onPressed: () => Get.toNamed(Routes.BOOK_DETAILS),
+          onPressed: () => Get.toNamed(Routes.ONE_WAY_SUMMARY),
         ),
       ),
       body: SingleChildScrollView(

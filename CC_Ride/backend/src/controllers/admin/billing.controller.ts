@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { prisma } from '../../lib/prisma'
 import { ok, serverError } from '../../lib/response'
 import { dec } from '../../lib/naira'
+import { assertCompanyScope } from '../../lib/adminScope'
 
 // ─── GET /admin/billing/invoices ─────────────────────────────────────────────
 // Generates a virtual invoice per company per month from booking history
@@ -79,6 +80,7 @@ export async function listInvoices(_req: Request, res: Response) {
 export async function getInvoiceDetail(req: Request, res: Response) {
   try {
     const companyId = String(req.params.companyId)
+    if (!assertCompanyScope(req, res, companyId)) return
     const month     = String(req.params.month)      // YYYY-MM
     const [year, mon] = month.split('-').map(Number)
     const start = new Date(year, mon - 1, 1)

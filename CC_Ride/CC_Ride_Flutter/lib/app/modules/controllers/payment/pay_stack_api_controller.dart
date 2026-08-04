@@ -9,9 +9,13 @@ import 'package:http/http.dart' as http;
 
 class PayStackApiController extends GetxController implements GetxService {
 
-  Map<String, String> userHeader = {
+  // legacyPaystackInit on the backend requires an authenticated request
+  // (reads req.user.id, populated by requireAuth) — without this header the
+  // handler threw on every call and the "Pay Now" flow was dead on arrival.
+  Map<String, String> get userHeader => {
     "Content-type": "application/json",
-    "Accept": "application/json"
+    "Accept": "application/json",
+    "Authorization": "Bearer ${getData.read('token') ?? ''}",
   };
 
   Future payStackApi({

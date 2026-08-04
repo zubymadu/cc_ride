@@ -618,6 +618,7 @@ class PostReqPreiviewScreenController extends GetxController {
   Map<String, String> userHeader = {
     "Content-type": "application/json",
     "Accept": "application/json",
+    "Authorization": "Bearer ${getData.read('token') ?? ''}",
   };
 
   Future deleteTriprequestApi({required String requestId}) async {
@@ -829,7 +830,7 @@ class PostReqPreiviewScreenController extends GetxController {
                         isLoading = true;
                         deleteTriprequestApi(requestId: requestId).then((value) {
                           if (value["Result"] == "true") {
-                            Get.offAllNamed(Routes.BOTTOM_BAR_SCREEN, arguments: 2);
+                            Get.offAllNamed(Routes.BOTTOM_BAR_SCREEN, arguments: 1);
                           }
                         });
                       } else {

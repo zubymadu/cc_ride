@@ -99,7 +99,14 @@ class RideScheduleScreenController extends GetxController with GetTickerProvider
       },
     );
     if (picked != null) {
-      return "${picked.year}-${picked.month}-${picked.day}";
+      // Zero-padding matters here, not just cosmetics — the backend builds
+      // `${trip_start_date}T${trip_start_time}:00` and hands it to
+      // `new Date(...)`. An unpadded date like "2027-1-5" isn't valid
+      // ISO-8601 and silently becomes Invalid Date server-side, which fails
+      // the whole post-trip call — for any date in the 1st-9th of a month.
+      final mm = picked.month.toString().padLeft(2, '0');
+      final dd = picked.day.toString().padLeft(2, '0');
+      return "${picked.year}-$mm-$dd";
     }
     return null;
   }

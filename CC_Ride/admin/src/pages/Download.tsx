@@ -1,7 +1,7 @@
 import { Smartphone, Download, Shield, Wifi } from 'lucide-react'
 
-const APK_URL = '/api/uploads/ccride-debug.apk'
-const APP_VERSION = '1.0.4-debug'
+const APK_URL = '/api/uploads/ccride-release.apk'
+const APP_VERSION = '1.0.0+8'
 
 export default function DownloadPage() {
   return (
@@ -23,14 +23,14 @@ export default function DownloadPage() {
               <p className="text-white font-semibold text-lg">Android App</p>
               <p className="text-gray-500 text-sm">Version {APP_VERSION}</p>
             </div>
-            <span className="text-xs font-medium px-3 py-1 rounded-full bg-yellow-500/15 text-yellow-400 border border-yellow-500/30">
-              Debug Build
+            <span className="text-xs font-medium px-3 py-1 rounded-full bg-green-500/15 text-green-400 border border-green-500/30">
+              Release Build
             </span>
           </div>
 
           <a
             href={APK_URL}
-            download="ccride-debug.apk"
+            download="ccride-release.apk"
             className="flex items-center justify-center gap-3 w-full py-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-semibold text-base transition-colors"
           >
             <Download size={20} />

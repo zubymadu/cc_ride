@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Search, CheckCircle, XCircle, Car, Loader2, UserPlus } from 'lucide-react'
+import { Search, CheckCircle, XCircle, Car, Loader2, UserPlus, Trash2 } from 'lucide-react'
 import { get, post } from '../lib/api'
 import { fmt, badge } from '../lib/utils'
+import { deleteWithForceConfirm } from '../lib/deleteWithConfirm'
 import PageHeader from '../components/PageHeader'
 import EmptyState from '../components/EmptyState'
 import Modal from '../components/Modal'
@@ -21,21 +22,22 @@ function AddDriverModal({ open, onClose }: { open: boolean; onClose: () => void 
   const [form, setForm] = useState({
     name: '', mobile: '', email: '', password: '',
     license_number: '', license_expiry: '',
-    nin: '', bvn: '', auto_activate: false,
+    nin: '', passport_number: '', bvn: '', auto_activate: false,
   })
   const [result, setResult] = useState<{ generated_password?: string } | null>(null)
 
   const mutation = useMutation({
     mutationFn: () => post('/admin/drivers/create', {
-      name:           form.name,
-      mobile:         form.mobile,
-      email:          form.email || undefined,
-      password:       form.password || undefined,
-      license_number: form.license_number,
-      license_expiry: form.license_expiry,
-      nin:            form.nin || undefined,
-      bvn:            form.bvn || undefined,
-      auto_activate:  form.auto_activate,
+      name:            form.name,
+      mobile:          form.mobile,
+      email:           form.email || undefined,
+      password:        form.password || undefined,
+      license_number:  form.license_number,
+      license_expiry:  form.license_expiry,
+      nin:             form.nin || undefined,
+      passport_number: form.passport_number || undefined,
+      bvn:             form.bvn || undefined,
+      auto_activate:   form.auto_activate,
     }),
     onSuccess: (data: any) => {
       qc.invalidateQueries({ queryKey: ['admin-drivers'] })
@@ -46,10 +48,12 @@ function AddDriverModal({ open, onClose }: { open: boolean; onClose: () => void 
   const inp = 'w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400'
 
   function handleClose() {
-    setForm({ name: '', mobile: '', email: '', password: '', license_number: '', license_expiry: '', nin: '', bvn: '', auto_activate: false })
+    setForm({ name: '', mobile: '', email: '', password: '', license_number: '', license_expiry: '', nin: '', passport_number: '', bvn: '', auto_activate: false })
     setResult(null)
     onClose()
   }
+
+  const identityValid = (!!form.nin) !== (!!form.passport_number) // exactly one, not both, not neither
 
   if (result) {
     return (
@@ -120,18 +124,25 @@ function AddDriverModal({ open, onClose }: { open: boolean; onClose: () => void 
           </div>
         </div>
 
-        {/* NIN / BVN */}
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">NIN (optional)</label>
+        {/* Identity anchor — required, exactly one */}
+        <div>
+          <p className="text-xs font-medium text-gray-600 mb-1">Identity document * — NIN if Nigerian, passport number otherwise</p>
+          <div className="grid grid-cols-2 gap-3">
             <input className={inp} placeholder="11-digit NIN" value={form.nin}
-              onChange={(e) => setForm((f) => ({ ...f, nin: e.target.value }))} />
+              onChange={(e) => setForm((f) => ({ ...f, nin: e.target.value }))} disabled={!!form.passport_number} />
+            <input className={inp} placeholder="Passport number" value={form.passport_number}
+              onChange={(e) => setForm((f) => ({ ...f, passport_number: e.target.value }))} disabled={!!form.nin} />
           </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">BVN (optional)</label>
-            <input className={inp} placeholder="11-digit BVN" value={form.bvn}
-              onChange={(e) => setForm((f) => ({ ...f, bvn: e.target.value }))} />
-          </div>
+          {form.nin && form.passport_number && (
+            <p className="text-xs text-red-500 mt-1">Provide only one — whichever applies</p>
+          )}
+        </div>
+
+        {/* BVN */}
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">BVN (optional)</label>
+          <input className={inp} placeholder="11-digit BVN" value={form.bvn}
+            onChange={(e) => setForm((f) => ({ ...f, bvn: e.target.value }))} />
         </div>
 
         {/* Auto-activate */}
@@ -155,7 +166,7 @@ function AddDriverModal({ open, onClose }: { open: boolean; onClose: () => void 
           <button onClick={handleClose} className="btn-secondary flex-1">Cancel</button>
           <button
             onClick={() => mutation.mutate()}
-            disabled={mutation.isPending || !form.name || !form.mobile || !form.license_number || !form.license_expiry}
+            disabled={mutation.isPending || !form.name || !form.mobile || !form.license_number || !form.license_expiry || !identityValid}
             className="btn-primary flex-1 disabled:opacity-50"
           >
             {mutation.isPending ? <><Loader2 className="w-4 h-4 animate-spin inline mr-1" />Registering…</> : 'Register Driver'}
@@ -190,6 +201,11 @@ export default function Drivers() {
       post('/admin/drivers/status', { driver_id: driverId, status }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-drivers'] }),
   })
+
+  async function handleDelete(d: Driver) {
+    const deleted = await deleteWithForceConfirm(`/admin/drivers/${d.user_id}`, d.name)
+    if (deleted) qc.invalidateQueries({ queryKey: ['admin-drivers'] })
+  }
 
   const filtered = data.filter((d) =>
     !search || d.name.toLowerCase().includes(search.toLowerCase()) || d.mobile.includes(search),
@@ -314,6 +330,13 @@ export default function Drivers() {
                             Reinstate
                           </button>
                         )}
+                        <button
+                          onClick={() => handleDelete(d)}
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                          title="Delete (housekeeping)"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       </div>
                     </td>
                   </tr>

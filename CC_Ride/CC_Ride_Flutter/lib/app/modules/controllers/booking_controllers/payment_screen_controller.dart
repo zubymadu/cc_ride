@@ -27,31 +27,38 @@ import 'package:webview_flutter/webview_flutter.dart';
 class PaymentScreenController extends GetxController {
 
   // ── Corporate booking intercept ─────────────────────────────────────────
-  // True when the user belongs to a company (used to decide whether to show
-  // the "pay via organisation" option at all — kept for backward compat).
-  bool get isCorpEmployee =>
-      (getData.read('companyId') as String? ?? '').isNotEmpty;
-
-  // True only when the user is BOTH a member of an active company
-  // membership (companyId is only ever populated server-side for active
-  // memberships — see legacyLogin) AND their own identity has been verified.
-  // This is what actually gates whether the "pay via organisation" option is
-  // tappable; isCorpEmployee alone just controls visibility of the row.
-  bool get isAuthorizedForCorpPayment {
-    if (!isCorpEmployee) return false;
-    final user = getData.read('userLogin');
-    return user != null && '${user['is_mobile_verify']}' == '1';
-  }
-
   // Whether the employee wants to charge this ride to their company.
   final RxBool useCorpAccount = false.obs;
+
+  // ── Multi-company wallets ───────────────────────────────────────────────
+  // A rider can be an active employee at more than one company at once —
+  // each shows up as its own selectable "card" alongside personal payment
+  // methods below. `selectedCompanyId` null means "not paying on a company
+  // account"; a non-null value is the id of the card currently picked and is
+  // what CORPORATE_BOOKING_CONFIRM reads (via a temporary override of the
+  // 'companyId' key that flow already keys off of).
+  final RxList<Map<String, dynamic>> companyWallets = <Map<String, dynamic>>[].obs;
+  final RxnString selectedCompanyId = RxnString();
+  final RxBool isLoadingWallets = false.obs;
+
+  // Company ids the rider has an outstanding (pending) wallet-access request
+  // for, and the id currently mid-submit — drives the "Request access" /
+  // "Request pending" state on a disabled wallet card. A card only ever
+  // reaches "disabled" here because wallet_access_enabled is false (the
+  // admin hasn't granted it at all); a wallet that's enabled but merely
+  // outside its allowed hours is a separate, non-requestable state (nothing
+  // to ask for — it'll just work again inside the window).
+  final RxSet<String> pendingWalletAccessRequests = <String>{}.obs;
+  final RxnString requestingAccessFor = RxnString();
 
   @override
   void onInit() {
     super.onInit();
-    // Default to corporate only when actually authorized to use it —
-    // otherwise the toggle would start "on" for a row the user can't tap.
-    if (isAuthorizedForCorpPayment) useCorpAccount.value = true;
+    // useCorpAccount/selectedCompanyId are now only ever set together, by
+    // selectCompanyWallet — driven by the real backend-confirmed wallet
+    // list (fetchCompanyWalletsApi, called below), not this old
+    // company-membership-only proxy. Auto-selection of a single usable
+    // wallet already happens inside fetchCompanyWalletsApi.
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       isLoading = false;
@@ -61,13 +68,122 @@ class PaymentScreenController extends GetxController {
         handleExternalWallet: handleExternalWallet,
       );
       paymentGatewayListController.paymentGatewayListApi();
+      fetchCompanyWalletsApi();
       update();
     });
   }
 
+  Future<void> fetchCompanyWalletsApi() async {
+    isLoadingWallets.value = true;
+    try {
+      final response = await http
+          .get(Uri.parse(Confing.baseurl + Confing.companyWallets), headers: userHeader)
+          .timeout(const Duration(seconds: 15));
+      final data = jsonDecode(response.body);
+      if (response.statusCode == 200 && data["Result"] == "true") {
+        final list = (data["data"] as List? ?? [])
+            .map((e) => Map<String, dynamic>.from(e as Map))
+            .toList();
+        companyWallets.assignAll(list);
+        // Pre-select the single wallet that's actually usable right now, if
+        // there's exactly one — mirrors the old single-company auto-on
+        // default without guessing when a rider has several.
+        final usable = list.where((w) => w["wallet_available_now"] == true).toList();
+        if (usable.length == 1) {
+          selectCompanyWallet("${usable.first["company_id"]}");
+        }
+        fetchPendingAccessRequests();
+      }
+    } catch (e) {
+      log(name: "=========== fetch company wallets error ===========", "$e");
+    } finally {
+      isLoadingWallets.value = false;
+      update();
+    }
+  }
+
+  Future<void> fetchPendingAccessRequests() async {
+    final notEnabled = companyWallets.where((w) => w["wallet_access_enabled"] != true);
+    for (final w in notEnabled) {
+      final companyId = "${w["company_id"]}";
+      try {
+        final response = await http
+            .get(Uri.parse('${Confing.baseurl}${Confing.corporateAccessRequestsMine}?company_id=$companyId'), headers: userHeader)
+            .timeout(const Duration(seconds: 15));
+        final data = jsonDecode(response.body);
+        if (response.statusCode == 200 && data["Result"] == "true") {
+          final requests = (data["data"] as List? ?? []);
+          final hasPending = requests.any((r) => r["request_type"] == "wallet_payment" && r["status"] == "pending");
+          if (hasPending) pendingWalletAccessRequests.add(companyId);
+        }
+      } catch (e) {
+        log(name: "=========== fetch access requests error ===========", "$e");
+      }
+    }
+    update();
+  }
+
+  Future<void> requestWalletAccess(String companyId) async {
+    requestingAccessFor.value = companyId;
+    update();
+    try {
+      final response = await http
+          .post(
+            Uri.parse(Confing.baseurl + Confing.corporateAccessRequests),
+            body: jsonEncode({"company_id": companyId, "request_type": "wallet_payment"}),
+            headers: userHeader,
+          )
+          .timeout(const Duration(seconds: 15));
+      final data = jsonDecode(response.body);
+      if (response.statusCode == 200 && data["Result"] == "true") {
+        pendingWalletAccessRequests.add(companyId);
+        showToastMessage("${data["ResponseMsg"] ?? "Request sent to your company admin"}");
+      } else {
+        showToastMessage("${data["ResponseMsg"] ?? "Could not send request"}");
+      }
+    } catch (e) {
+      log(name: "=========== request wallet access error ===========", "$e");
+      showToastMessage("Could not send request — check your connection");
+    } finally {
+      requestingAccessFor.value = null;
+      update();
+    }
+  }
+
+  void selectCompanyWallet(String? companyId) {
+    if (selectedCompanyId.value == companyId) {
+      // Tapping the already-selected card deselects it — back to personal
+      // payment methods.
+      selectedCompanyId.value = null;
+      useCorpAccount.value = false;
+      return;
+    }
+    selectedCompanyId.value = companyId;
+    useCorpAccount.value = companyId != null;
+    if (companyId != null) {
+      // CORPORATE_BOOKING_CONFIRM and the whole corporate-controller layer
+      // read a single static 'companyId'/'companyName' pair out of local
+      // storage rather than taking one as a navigation argument — override
+      // it here to whichever card the rider picked for this booking.
+      Map<String, dynamic>? wallet;
+      for (final w in companyWallets) {
+        if ("${w["company_id"]}" == companyId) { wallet = w; break; }
+      }
+      getData.write('companyId', companyId);
+      getData.write('companyName', wallet?["company_name"] ?? 'Company');
+      bookPricingController.walletCalculation(false);
+    }
+    update();
+  }
+
   BookPricingController bookPricingController = Get.put(BookPricingController());
   PaymentGatewayListController paymentGatewayListController = Get.put(PaymentGatewayListController());
-  TripPreviewScreenController tripPreviewScreenController = Get.put(TripPreviewScreenController());
+  // Reuse the instance populated by trip_preview_screen_view.dart's API call —
+  // Get.put() here would replace it with a blank controller and wipe the data.
+  TripPreviewScreenController tripPreviewScreenController =
+      Get.isRegistered<TripPreviewScreenController>()
+          ? Get.find<TripPreviewScreenController>()
+          : Get.put(TripPreviewScreenController());
 
   TextEditingController messageController = TextEditingController();
 
@@ -97,6 +213,7 @@ class PaymentScreenController extends GetxController {
       subtotal: "${bookPricingController.subTotal}",
       totalAmount: "${bookPricingController.totalAmount}",
       couAmt: "${bookPricingController.couponAmount}",
+      couponCode: bookPricingController.couponCode,
       wallAmt: "${bookPricingController.useWalletAmount}",
       paymentId: paymentId == "0" ? "5" : paymentId,
       transactionId: transactionID,
@@ -109,6 +226,7 @@ class PaymentScreenController extends GetxController {
   Map<String, String> userHeader = {
     "Content-type": "application/json",
     "Accept": "application/json",
+    "Authorization": "Bearer ${getData.read('token') ?? ''}",
   };
 
   Future bookSeatApi({
@@ -118,6 +236,7 @@ class PaymentScreenController extends GetxController {
     required String subtotal,
     required String totalAmount,
     required String couAmt,
+    String couponCode = '',
     required String wallAmt,
     required String paymentId,
     required String driverAlertInfo,
@@ -134,6 +253,7 @@ class PaymentScreenController extends GetxController {
       "subtotal": subtotal,
       "total_amount": totalAmount,
       "cou_amt": couAmt,
+      "coupon_code": couponCode,
       "wall_amt": wallAmt,
       "payment_id": paymentId,
       "driver_alert_info" : driverAlertInfo,
@@ -159,7 +279,7 @@ class PaymentScreenController extends GetxController {
       if (response.statusCode == 200) {
         if (data["Result"] == "true") {
           Get.back();
-          showOrderSuccess();
+          showOrderSuccess(waitlisted: data["waitlisted"] == true);
           isLoading = false;
           update();
           return data;
@@ -441,7 +561,7 @@ class PaymentScreenController extends GetxController {
     );
   }
 
-  void showOrderSuccess() {
+  void showOrderSuccess({bool waitlisted = false}) {
     Get.bottomSheet(
       backgroundColor: ccSurface,
       isScrollControlled: true,
@@ -467,9 +587,9 @@ class PaymentScreenController extends GetxController {
             children: [
               SvgPicture.asset("assets/image/svg/success.svg", fit: BoxFit.contain),
               const SizedBox(height: 16),
-              const Text(
-                "Booking Confirmed",
-                style: TextStyle(
+              Text(
+                waitlisted ? "Joined Waitlist" : "Booking Confirmed",
+                style: const TextStyle(
                   fontFamily: 'Inter',
                   fontWeight: FontWeight.w700,
                   fontSize: 24,
@@ -479,10 +599,12 @@ class PaymentScreenController extends GetxController {
               const SizedBox(height: 8),
               SizedBox(
                 width: Get.width * 0.8,
-                child: const Text(
-                  "Your booking has been confirmed. Our Team will reach to you soon.",
+                child: Text(
+                  waitlisted
+                      ? "This route is fully booked. You've been added to the waitlist and will be notified if a seat opens up."
+                      : "Your booking has been confirmed. Our Team will reach to you soon.",
                   textAlign: TextAlign.center,
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontFamily: 'Inter',
                     color: ccSecondaryText,
                     fontSize: 15,

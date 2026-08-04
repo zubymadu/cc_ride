@@ -136,7 +136,7 @@ class PostRequestScreenView extends GetView<PostRequestScreenController> {
               final picked =
                   DateTime.parse("${Get.arguments["departureDate"]}");
               c.selectedDate =
-                  "${picked.year}-${picked.month}-${picked.day}";
+                  "${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}";
               c.dateController.text =
                   DateFormat('EEEE, MMMM d').format(picked);
               c.update();
@@ -163,9 +163,12 @@ class PostRequestScreenView extends GetView<PostRequestScreenController> {
                     hint: 'Pickup location'.tr,
                     prefixIcon: const Icon(Icons.my_location_rounded,
                         color: ccPrimary, size: 20),
-                    onChanged: (value) async {
-                      await c.mapSuggetionControlle
-                          .mapApi(suggestkey: value);
+                    onChanged: (value) {
+                      // suggestionsCallback below already fetches (and
+                      // debounces) results for this field — calling mapApi()
+                      // again here fired an extra undebounced request per
+                      // keystroke that could race and overwrite it with a
+                      // stale response for a shorter, earlier substring.
                       c.update();
                     },
                     validator: (value) {
@@ -222,9 +225,12 @@ class PostRequestScreenView extends GetView<PostRequestScreenController> {
                     hint: 'Drop-off location'.tr,
                     prefixIcon: const Icon(Icons.flag_rounded,
                         color: ccNavyText, size: 20),
-                    onChanged: (value) async {
-                      await c.mapSuggetionControlle
-                          .mapApi(suggestkey: value);
+                    onChanged: (value) {
+                      // suggestionsCallback below already fetches (and
+                      // debounces) results for this field — calling mapApi()
+                      // again here fired an extra undebounced request per
+                      // keystroke that could race and overwrite it with a
+                      // stale response for a shorter, earlier substring.
                       c.update();
                     },
                     validator: (value) {
@@ -291,7 +297,7 @@ class PostRequestScreenView extends GetView<PostRequestScreenController> {
                       onTap: () {
                         c.selectDate(context).then((picked) {
                           c.selectedDate =
-                              '${picked.year}-${picked.month}-${picked.day}';
+                              '${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}';
                           c.dateController.text =
                               DateFormat('EEEE, MMMM d').format(picked);
                           c.update();

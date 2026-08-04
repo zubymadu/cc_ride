@@ -50,6 +50,15 @@ class NotificationHandler {
           "owner_id" : "${data["user_id"]}",
         },
       );
+    } else if (data["kind"] == "request_matched" && data["request_id"] != null) {
+      // Mirrors the in-app notification list's handling (see
+      // notification_screen_view.dart) — a driver committing a trip against
+      // this request needs the passenger to explicitly confirm or decline,
+      // not just be dropped straight into the trip preview.
+      Get.toNamed(
+        Routes.MATCHED_REQUEST_SCREEN,
+        arguments: {"request_id": "${data["request_id"]}"},
+      );
     }
   }
 }

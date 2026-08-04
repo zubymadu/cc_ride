@@ -1,9 +1,12 @@
 // ignore_for_file: deprecated_member_use
+import 'dart:convert';
+import 'dart:developer';
 import 'dart:ui' as ui;
 
 import 'package:carride/app/data/confing.dart';
 import 'package:carride/app/modules/controllers/find_trip_controller.dart';
 import 'package:carride/app/modules/controllers/search_controllers/map_suggetion_controlle.dart';
+import 'package:http/http.dart' as http;
 
 
 import 'package:carride/theme/theme_colores.dart';
@@ -60,6 +63,31 @@ class SearchScreenController extends GetxController {
   String get tripDate => _tripDate.value;
   set tripDate(String value) => _tripDate.value = value;
 
+  // ======================  TRIP PLANNING  ======================
+  // "Let's plan your next trip" screen state — departure time, return trip,
+  // and route-subscription, layered on top of the origin/destination state
+  // already shared with the home screen.
+  final Rx<DateTime> _departureDateTime = DateTime.now().obs;
+  DateTime get departureDateTime => _departureDateTime.value;
+  set departureDateTime(DateTime value) {
+    _departureDateTime.value = value;
+    tripDate = "${value.year.toString().padLeft(4, '0')}-"
+        "${value.month.toString().padLeft(2, '0')}-"
+        "${value.day.toString().padLeft(2, '0')}";
+  }
+
+  final RxBool _returnTripEnabled = false.obs;
+  bool get returnTripEnabled => _returnTripEnabled.value;
+  set returnTripEnabled(bool value) => _returnTripEnabled.value = value;
+
+  final Rx<DateTime?> _returnDateTime = Rx<DateTime?>(null);
+  DateTime? get returnDateTime => _returnDateTime.value;
+  set returnDateTime(DateTime? value) => _returnDateTime.value = value;
+
+  final RxBool _subscribeToRoute = false.obs;
+  bool get subscribeToRoute => _subscribeToRoute.value;
+  set subscribeToRoute(bool value) => _subscribeToRoute.value = value;
+
   // ======================  UI STATE  ======================
   FocusNode focus = FocusNode();
   FocusNode focus2 = FocusNode();
@@ -91,6 +119,38 @@ class SearchScreenController extends GetxController {
 
   double? lat;
   double? long;
+
+  // ======================  NEARBY SHARED ROUTES  ======================
+  final RxList<NearbyRoute> _nearbyRoutes = <NearbyRoute>[].obs;
+  List<NearbyRoute> get nearbyRoutes => _nearbyRoutes;
+
+  final RxBool _nearbyRoutesLoading = false.obs;
+  bool get nearbyRoutesLoading => _nearbyRoutesLoading.value;
+  set nearbyRoutesLoading(bool value) => _nearbyRoutesLoading.value = value;
+
+  Future<void> fetchNearbyRoutes({required double lat, required double lng}) async {
+    nearbyRoutesLoading = true;
+    update();
+    try {
+      final response = await http.post(
+        Uri.parse(Confing.baseurl + Confing.nearbyRoutes),
+        headers: const {"Content-type": "application/json", "Accept": "application/json"},
+        body: jsonEncode({"lat": lat, "lng": lng}),
+      );
+      final data = jsonDecode(response.body);
+      if (data["Result"] == "true") {
+        final list = (data["Data"] as List? ?? [])
+            .map((e) => NearbyRoute.fromJson(e))
+            .toList();
+        _nearbyRoutes.assignAll(list);
+      }
+    } catch (e) {
+      log(name: "fetchNearbyRoutes error", "$e");
+    } finally {
+      nearbyRoutesLoading = false;
+      update();
+    }
+  }
 
   // =======================  SAFE IMAGE LOADER  =====================
   Future<Uint8List?> getBytesFromAsset(String path, double size) async {
@@ -177,11 +237,36 @@ class SearchScreenController extends GetxController {
 
     try {
       Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
-      lat = position.latitude;
-      long = position.longitude;
+      final currentLat = position.latitude;
+      final currentLong = position.longitude;
+      lat = currentLat;
+      long = currentLong;
       addCurrentLocationMarker(position);
       update();
       mapSuggetionControlle.update();
+      try {
+        final placemarks = await placemarkFromCoordinates(currentLat, currentLong);
+        if (placemarks.isNotEmpty) {
+          final p = placemarks.first;
+          // Locality + country alone (e.g. "Lagos, Nigeria") threw away all
+          // street-level detail the reverse geocode actually returned, so
+          // the passenger's "current location" pickup label never told them
+          // which street they were on — only the coordinates (kept precise
+          // via lat/long above) were accurate.
+          final street = (p.street != null && p.street!.isNotEmpty)
+              ? p.street!
+              : [p.subThoroughfare, p.thoroughfare]
+                  .where((s) => s != null && s.isNotEmpty)
+                  .join(" ");
+          addresshome = [street, p.subLocality, p.locality, p.country]
+              .whereType<String>()
+              .where((s) => s.trim().isNotEmpty)
+              .toSet()
+              .join(", ");
+          update();
+        }
+      } catch (_) {}
+      fetchNearbyRoutes(lat: currentLat, lng: currentLong);
     } catch (e) {
       Get.snackbar("Error", "Failed to get location");
     }
@@ -533,4 +618,55 @@ class SearchScreenController extends GetxController {
     update();
   }
 
+}
+
+class NearbyRoute {
+  final String routeId;
+  final String routeCode;
+  final String routeName;
+  final String originName;
+  final double originLat;
+  final double originLong;
+  final String destinationName;
+  final double destinationLat;
+  final double destinationLong;
+  final double distanceKm;
+  final String nextDeparture;
+  final String seatPrice;
+  // False when the driver who created this route deactivated it — the route
+  // still shows as a suggestion (per design) but has no active schedule, so
+  // there's nothing bookable until another driver adopts it.
+  final bool isServiced;
+
+  NearbyRoute({
+    required this.routeId,
+    required this.routeCode,
+    required this.routeName,
+    required this.originName,
+    required this.originLat,
+    required this.originLong,
+    required this.destinationName,
+    required this.destinationLat,
+    required this.destinationLong,
+    required this.distanceKm,
+    required this.nextDeparture,
+    required this.seatPrice,
+    required this.isServiced,
+  });
+
+  factory NearbyRoute.fromJson(Map<String, dynamic> json) => NearbyRoute(
+        routeId: '${json["route_id"]}',
+        routeCode: '${json["route_code"]}',
+        routeName: '${json["route_name"]}',
+        originName: '${json["origin_name"]}',
+        originLat: double.tryParse('${json["origin_lat"]}') ?? 0,
+        originLong: double.tryParse('${json["origin_long"]}') ?? 0,
+        destinationName: '${json["destination_name"]}',
+        destinationLat: double.tryParse('${json["destination_lat"]}') ?? 0,
+        destinationLong: double.tryParse('${json["destination_long"]}') ?? 0,
+        distanceKm: double.tryParse('${json["distance_km"]}') ?? 0,
+        nextDeparture: '${json["next_departure"]}',
+        seatPrice: '${json["seat_price"]}',
+        isServiced: json["is_serviced"] != false,
+      );
 }

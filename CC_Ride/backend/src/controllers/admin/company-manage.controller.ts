@@ -6,6 +6,8 @@ import { z } from 'zod'
 import { prisma } from '../../lib/prisma'
 import { ok, fail, serverError } from '../../lib/response'
 import { dec } from '../../lib/naira'
+import { assertCompanyScope } from '../../lib/adminScope'
+import { provisionCompanyAdminInvite } from '../../lib/adminInvite'
 import crypto from 'crypto'
 
 // ─── POST /admin/companies/create ────────────────────────────────────────────
@@ -57,6 +59,18 @@ export async function createCompany(req: Request, res: Response) {
       },
     })
 
+    // Always send the admin-claim invite immediately on creation — this was
+    // previously gated behind auto_approve, so a company created the normal
+    // way (left in pending_approval, the default) never got an invite email
+    // at all unless a super-admin separately remembered to take an explicit
+    // "Approve" action on it later (see companyAction in
+    // companies.controller.ts, which fires the same invite on approval).
+    // The account status (pending vs active) and being able to set up admin
+    // access are orthogonal — a contact should be able to claim their admin
+    // account as soon as their company exists, regardless of billing/vetting
+    // approval state.
+    provisionCompanyAdminInvite(company.id).catch((err) => console.error('createCompany: invite provisioning failed:', err))
+
     ok(res, {
       id:     company.id,
       name:   company.name,
@@ -77,6 +91,7 @@ const CreateDeptSchema = z.object({
 export async function createDepartment(req: Request, res: Response) {
   try {
     const companyId = String(req.params.id)
+    if (!assertCompanyScope(req, res, companyId)) return
     const { name, code } = CreateDeptSchema.parse(req.body)
 
     const company = await prisma.company.findUnique({ where: { id: companyId } })
@@ -98,11 +113,12 @@ export async function createDepartment(req: Request, res: Response) {
 export async function listDepartments(req: Request, res: Response) {
   try {
     const companyId = String(req.params.id)
+    if (!assertCompanyScope(req, res, companyId)) return
     const depts = await prisma.department.findMany({
       where:   { companyId, isActive: true },
       orderBy: { name: 'asc' },
       include: {
-        _count: { select: { employees: true } },
+        _count: { select: { employees: { where: { isActive: true } } } },
       },
     })
 
@@ -129,6 +145,7 @@ const CreateCCSchema = z.object({
 export async function createCostCentre(req: Request, res: Response) {
   try {
     const companyId = String(req.params.id)
+    if (!assertCompanyScope(req, res, companyId)) return
     const data = CreateCCSchema.parse(req.body)
 
     const company = await prisma.company.findUnique({ where: { id: companyId } })
@@ -160,12 +177,13 @@ export async function createCostCentre(req: Request, res: Response) {
 export async function listCostCentres(req: Request, res: Response) {
   try {
     const companyId = String(req.params.id)
+    if (!assertCompanyScope(req, res, companyId)) return
     const ccs = await prisma.costCentre.findMany({
       where:   { companyId, isActive: true },
       orderBy: { name: 'asc' },
       include: {
         department: { select: { name: true } },
-        _count:     { select: { employees: true, bookings: true } },
+        _count:     { select: { employees: { where: { isActive: true } }, bookings: true } },
       },
     })
 
@@ -206,6 +224,7 @@ const CreateRideSchema = z.object({
 export async function createCompanyRide(req: Request, res: Response) {
   try {
     const companyId = String(req.params.id)
+    if (!assertCompanyScope(req, res, companyId)) return
     const data      = CreateRideSchema.parse(req.body)
 
     const company = await prisma.company.findUnique({ where: { id: companyId } })

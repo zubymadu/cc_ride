@@ -1,11 +1,11 @@
 // ignore_for_file: deprecated_member_use
 
+import 'package:carride/app/data/app_info.dart';
 import 'package:carride/app/data/confing.dart';
 import 'package:carride/app/data/data_store.dart';
 import 'package:carride/app/routes/app_pages.dart';
 import 'package:carride/utils/cc_ds.dart';
 import 'package:carride/widgets/logout_delete_bottomsheet.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
@@ -60,35 +60,27 @@ class AccountScreenView extends GetView<AccountScreenController> {
                               ),
                             ),
                             const SizedBox(height: 20),
-                            // Profile row
-                            GestureDetector(
-                              onTap: () => Get.toNamed(Routes.PROFILE_SCREEN)
-                                  ?.then((_) => c.update()),
-                              child: Container(
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  gradient: const LinearGradient(
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                    colors: [Color(0xFF001B3D), ccPrimary],
-                                  ),
-                                  borderRadius:
-                                      BorderRadius.circular(CCRadius.card),
-                                  boxShadow: CCShadow.card,
-                                ),
-                                child: Row(
-                                  children: [
-                                    Container(
-                                      width: 56,
-                                      height: 56,
+                            // Profile hero — centered avatar, name,
+                            // company subtitle and an Edit Profile link,
+                            // matching the account-screen redesign.
+                            Center(
+                              child: Column(
+                                children: [
+                                  GestureDetector(
+                                    onTap: () =>
+                                        Get.toNamed(Routes.PROFILE_SCREEN)
+                                            ?.then((_) => c.update()),
+                                    child: Stack(
+                                      clipBehavior: Clip.none,
+                                      children: [
+                                        Container(
+                                      width: 72,
+                                      height: 72,
                                       decoration: BoxDecoration(
                                         shape: BoxShape.circle,
                                         border: Border.all(
-                                            color:
-                                                Colors.white.withOpacity(0.4),
-                                            width: 2),
-                                        color:
-                                            Colors.white.withOpacity(0.1),
+                                            color: ccInputBorder, width: 2),
+                                        color: ccIceBlue,
                                       ),
                                       clipBehavior: Clip.antiAlias,
                                       child: hasPic
@@ -115,70 +107,69 @@ class AccountScreenView extends GetView<AccountScreenController> {
                                                     : "?",
                                                 style: const TextStyle(
                                                   fontFamily: 'Inter',
-                                                  fontSize: 22,
+                                                  fontSize: 26,
                                                   fontWeight: FontWeight.w700,
-                                                  color: Colors.white,
+                                                  color: ccPrimary,
                                                 ),
                                               ),
                                             ),
-                                    ),
-                                    const SizedBox(width: 14),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            user != null
-                                                ? "${user["name"]}"
-                                                : "",
-                                            style: const TextStyle(
-                                              fontFamily: 'Inter',
-                                              fontSize: 17,
-                                              fontWeight: FontWeight.w700,
-                                              color: Colors.white,
+                                        ),
+                                        if (user != null &&
+                                            (user["is_mobile_verify"] ==
+                                                    "1" ||
+                                                user["is_email_verify"] ==
+                                                    "1"))
+                                          Positioned(
+                                            right: -2,
+                                            bottom: -2,
+                                            child: Container(
+                                              padding:
+                                                  const EdgeInsets.all(2),
+                                              decoration: BoxDecoration(
+                                                shape: BoxShape.circle,
+                                                color: ccSurface,
+                                              ),
+                                              child: const Icon(
+                                                Icons.verified_rounded,
+                                                color: ccPrimary,
+                                                size: 20,
+                                              ),
                                             ),
                                           ),
-                                          const SizedBox(height: 3),
-                                          Text(
-                                            user != null
-                                                ? "${user["email"]}"
-                                                : "",
-                                            overflow: TextOverflow.ellipsis,
-                                            style: TextStyle(
-                                              fontFamily: 'Inter',
-                                              fontSize: 13,
-                                              color: Colors.white
-                                                  .withOpacity(0.7),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
+                                      ],
                                     ),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 12, vertical: 6),
-                                      decoration: BoxDecoration(
-                                        color:
-                                            Colors.white.withOpacity(0.15),
-                                        borderRadius:
-                                            BorderRadius.circular(99),
-                                        border: Border.all(
-                                          color: Colors.white.withOpacity(0.3),
-                                        ),
-                                      ),
-                                      child: const Text(
-                                        "View",
-                                        style: TextStyle(
-                                          fontFamily: 'Inter',
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600,
-                                          color: Colors.white,
-                                        ),
-                                      ),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Text(
+                                    user != null ? "${user["name"]}" : "",
+                                    style: const TextStyle(
+                                      fontFamily: 'Inter',
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.w700,
+                                      color: ccNavyText,
+                                    ),
+                                  ),
+                                  if (user != null &&
+                                      user["company_name"] != null) ...[
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      "${user["company_name"]}",
+                                      style: CCText.bodyMd
+                                          .copyWith(color: ccSecondaryText),
                                     ),
                                   ],
-                                ),
+                                  const SizedBox(height: 6),
+                                  GestureDetector(
+                                    onTap: () =>
+                                        Get.toNamed(Routes.PERSONAL_DETAILS)
+                                            ?.then((_) => c.update()),
+                                    child: Text(
+                                      "Edit Profile",
+                                      style: CCText.labelSm
+                                          .copyWith(color: ccPrimary),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ],
@@ -190,53 +181,56 @@ class AccountScreenView extends GetView<AccountScreenController> {
                       padding: const EdgeInsets.all(20),
                       sliver: SliverList(
                         delegate: SliverChildListDelegate([
-                          // ── Preferences section ──────────────────────
-                          const _SectionLabel("Personalization & Preferences"),
+                          // ── Account section ──────────────────────────
+                          // proferences[0] = Personal Info (covers name,
+                          // phone and email + verification — there's no
+                          // separate Work Email/Password screen to link to).
+                          const _SectionLabel("Account"),
                           const SizedBox(height: 8),
-                          Container(
-                            decoration: BoxDecoration(
-                              color: ccSurface,
-                              borderRadius:
-                                  BorderRadius.circular(CCRadius.card),
-                              boxShadow: CCShadow.card,
-                            ),
-                            child: Column(
-                              children: [
-                                for (int i = 0;
-                                    i < c.proferences.length;
-                                    i++) ...[
-                                  _MenuTile(
-                                    icon: _prefIcon(i),
-                                    label: "${c.proferences[i]}",
-                                    onTap: () => _onPrefTap(i, c),
-                                    showDivider:
-                                        i != c.proferences.length - 1,
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
+                          _sectionCard(c, indices: const [0, 1, 2]),
 
                           const SizedBox(height: 20),
 
-                          // ── Account & Security section ───────────────
-                          const _SectionLabel("Account & Security"),
+                          // ── Finance section ───────────────────────────
+                          const _SectionLabel("Finance"),
                           const SizedBox(height: 8),
-                          Container(
-                            decoration: BoxDecoration(
-                              color: ccSurface,
-                              borderRadius:
-                                  BorderRadius.circular(CCRadius.card),
-                              boxShadow: CCShadow.card,
-                            ),
-                            child: Column(
-                              children: [
-                                if (c.pageListApiModel?.pagelist != null)
+                          _sectionCard(c, indices: const [3, 4, 6]),
+
+                          const SizedBox(height: 20),
+
+                          // ── Preferences section ───────────────────────
+                          const _SectionLabel("Preferences"),
+                          const SizedBox(height: 8),
+                          _sectionCard(c, indices: const [7, 8]),
+
+                          const SizedBox(height: 20),
+
+                          // ── Support section ───────────────────────────
+                          const _SectionLabel("Support"),
+                          const SizedBox(height: 8),
+                          _sectionCard(c, indices: const [5]),
+
+                          // ── Legal section — dynamic CMS pages (Privacy,
+                          // Terms, etc.) fetched from pageListApi().
+                          if (c.pageListApiModel?.pagelist?.isNotEmpty ==
+                              true) ...[
+                            const SizedBox(height: 20),
+                            const _SectionLabel("Legal"),
+                            const SizedBox(height: 8),
+                            Container(
+                              decoration: BoxDecoration(
+                                color: ccSurface,
+                                borderRadius:
+                                    BorderRadius.circular(CCRadius.card),
+                                boxShadow: CCShadow.card,
+                              ),
+                              child: Column(
+                                children: [
                                   for (int pi = 0;
                                       pi <
                                           c.pageListApiModel!.pagelist!
                                               .length;
-                                      pi++) ...[
+                                      pi++)
                                     _MenuTile(
                                       icon: Icons.description_outlined,
                                       label:
@@ -252,56 +246,92 @@ class AccountScreenView extends GetView<AccountScreenController> {
                                           },
                                         );
                                       },
-                                      showDivider: true,
+                                      showDivider: pi !=
+                                          c.pageListApiModel!.pagelist!
+                                                  .length -
+                                              1,
                                     ),
-                                  ],
-                                for (int ai = 0;
-                                    ai < c.accountSecurity.length;
-                                    ai++)
-                                  _MenuTile(
-                                    icon: ai == 0
-                                        ? Icons.logout_rounded
-                                        : Icons.delete_outline_rounded,
-                                    label: "${c.accountSecurity[ai]}",
-                                    isDestructive: true,
-                                    showDivider:
-                                        ai != c.accountSecurity.length - 1,
-                                    onTap: () {
-                                      if (ai == 0) {
-                                        logOutAndDeleteAccountBottomsheet(
-                                          title: "Logout".tr,
-                                          subtitle:
-                                              "Are you sure you want to log out?"
-                                                  .tr,
-                                          buttonText: "Yes, Logout".tr,
-                                          onTap: () {
-                                            final storage = GetStorage();
-                                            storage.erase();
-                                            c.themeColores
-                                                .toggleTheme(dark: false);
-                                            c.languageScreenController
-                                                .updateLanguage(
-                                                    const Locale('en', 'US'));
-                                            c.themeColores.update();
-                                            c.update();
-                                            Get.offAllNamed(
-                                                Routes.LOGIN_SCREEN);
-                                          },
-                                        );
-                                      } else if (ai == 1) {
-                                        logOutAndDeleteAccountBottomsheet(
-                                          title: "Delete Account".tr,
-                                          subtitle:
-                                              "Are you sure you want to delete account?"
-                                                  .tr,
-                                          buttonText: "Yes, Delete".tr,
-                                          onTap: () => c.deleteAccountApi(),
-                                        );
-                                      }
-                                    },
-                                  ),
-                              ],
+                                ],
+                              ),
                             ),
+                          ],
+
+                          const SizedBox(height: 28),
+
+                          // ── Sign out ───────────────────────────────────
+                          SizedBox(
+                            width: double.infinity,
+                            child: TextButton.icon(
+                              onPressed: () {
+                                logOutAndDeleteAccountBottomsheet(
+                                  title: "Logout".tr,
+                                  subtitle:
+                                      "Are you sure you want to log out?".tr,
+                                  buttonText: "Yes, Logout".tr,
+                                  onTap: () {
+                                    final storage = GetStorage();
+                                    storage.erase();
+                                    c.themeColores.toggleTheme(dark: false);
+                                    c.languageScreenController.updateLanguage(
+                                        const Locale('en', 'US'));
+                                    c.themeColores.update();
+                                    c.update();
+                                    Get.offAllNamed(Routes.LOGIN_SCREEN);
+                                  },
+                                );
+                              },
+                              style: TextButton.styleFrom(
+                                backgroundColor: const Color(0xFFFFEBEE),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius:
+                                      BorderRadius.circular(CCRadius.btn),
+                                ),
+                              ),
+                              icon: const Icon(Icons.logout_rounded,
+                                  color: Color(0xFFD32F2F), size: 18),
+                              label: const Text(
+                                "Sign Out",
+                                style: TextStyle(
+                                  fontFamily: 'Inter',
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFFD32F2F),
+                                ),
+                              ),
+                            ),
+                          ),
+
+                          const SizedBox(height: 12),
+                          Center(
+                            child: TextButton(
+                              onPressed: () {
+                                logOutAndDeleteAccountBottomsheet(
+                                  title: "Delete Account".tr,
+                                  subtitle:
+                                      "Are you sure you want to delete account?"
+                                          .tr,
+                                  buttonText: "Yes, Delete".tr,
+                                  onTap: () => c.deleteAccountApi(),
+                                );
+                              },
+                              child: Text(
+                                "Close your account",
+                                style: CCText.labelSm
+                                    .copyWith(color: ccSecondaryText),
+                              ),
+                            ),
+                          ),
+
+                          const SizedBox(height: 20),
+                          Center(
+                            child: Obx(() => Text(
+                              AppInfo.versionLabel.value.isEmpty
+                                  ? "CC_Ride"
+                                  : AppInfo.versionLabel.value,
+                              style: CCText.labelSm
+                                  .copyWith(color: ccSecondaryText),
+                            )),
                           ),
 
                           const SizedBox(height: 40),
@@ -325,6 +355,7 @@ class AccountScreenView extends GetView<AccountScreenController> {
       Icons.help_outline_rounded,
       Icons.people_outline_rounded,
       Icons.language_rounded,
+      Icons.chat_bubble_outline_rounded,
     ];
     return i < icons.length ? icons[i] : Icons.settings_outlined;
   }
@@ -355,7 +386,32 @@ class AccountScreenView extends GetView<AccountScreenController> {
       case 7:
         Get.toNamed(Routes.LANGUAGE_SCREEN)?.then((_) => c.update());
         break;
+      case 8:
+        Get.toNamed(Routes.MESSAGE_LIST)?.then((_) => c.update());
+        break;
     }
+  }
+
+  Widget _sectionCard(AccountScreenController c,
+      {required List<int> indices}) {
+    return Container(
+      decoration: BoxDecoration(
+        color: ccSurface,
+        borderRadius: BorderRadius.circular(CCRadius.card),
+        boxShadow: CCShadow.card,
+      ),
+      child: Column(
+        children: [
+          for (int j = 0; j < indices.length; j++)
+            _MenuTile(
+              icon: _prefIcon(indices[j]),
+              label: "${c.proferences[indices[j]]}",
+              onTap: () => _onPrefTap(indices[j], c),
+              showDivider: j != indices.length - 1,
+            ),
+        ],
+      ),
+    );
   }
 }
 
@@ -380,20 +436,15 @@ class _MenuTile extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.onTap,
-    this.trailing,
-    this.isDestructive = false,
     this.showDivider = true,
   });
   final IconData icon;
   final String label;
   final VoidCallback onTap;
-  final Widget? trailing;
-  final bool isDestructive;
   final bool showDivider;
 
   @override
   Widget build(BuildContext context) {
-    final color = isDestructive ? const Color(0xFFD32F2F) : ccNavyText;
     return Column(
       children: [
         InkWell(
@@ -408,30 +459,23 @@ class _MenuTile extends StatelessWidget {
                   width: 36,
                   height: 36,
                   decoration: BoxDecoration(
-                    color: isDestructive
-                        ? const Color(0xFFFFEBEE)
-                        : ccIceBlue,
+                    color: ccIceBlue,
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Icon(icon,
-                      color: isDestructive
-                          ? const Color(0xFFD32F2F)
-                          : ccPrimary,
-                      size: 18),
+                  child: Icon(icon, color: ccPrimary, size: 18),
                 ),
                 const SizedBox(width: 14),
                 Expanded(
                   child: Text(label,
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontFamily: 'Inter',
                         fontSize: 15,
                         fontWeight: FontWeight.w500,
-                        color: color,
+                        color: ccNavyText,
                       )),
                 ),
-                trailing ??
-                    Icon(Icons.chevron_right_rounded,
-                        color: ccSecondaryText, size: 20),
+                const Icon(Icons.chevron_right_rounded,
+                    color: ccSecondaryText, size: 20),
               ],
             ),
           ),

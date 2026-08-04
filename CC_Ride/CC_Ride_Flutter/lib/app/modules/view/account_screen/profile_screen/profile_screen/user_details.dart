@@ -82,6 +82,35 @@ class UserDetails extends GetView<ProfileScreenController> {
                         color: Colors.white,
                       ),
                     ),
+                    if (info.isMobileVerify == "1" ||
+                        info.isEmailVerify == "1") ...[
+                      const SizedBox(height: 4),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(99),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.verified_rounded,
+                                color: Colors.white, size: 12),
+                            SizedBox(width: 4),
+                            Text(
+                              "Verified",
+                              style: TextStyle(
+                                fontFamily: 'Inter',
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 4),
                     Text(
                       "${info.joined}",

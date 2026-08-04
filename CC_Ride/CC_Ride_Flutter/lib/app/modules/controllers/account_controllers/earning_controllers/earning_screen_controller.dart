@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:carride/app/data/confing.dart';
 import 'package:carride/app/data/data_store.dart';
+import 'package:carride/app/modules/controllers/driver_mode/driver_mode_controller.dart';
 import 'package:carride/app/modules/models/earning_api_model.dart';
 import 'package:carride/app/routes/app_pages.dart';
 import 'package:carride/utils/cc_ds.dart';
@@ -53,12 +54,21 @@ class EarningScreenController extends GetxController {
   Map<String, String> userHeader = {
     "Content-type": "application/json",
     "Accept": "application/json",
+    "Authorization": "Bearer ${getData.read('token') ?? ''}",
   };
 
   Future earningApi() async {
     isLoading = true;
     update();
-    Map body = {"uid": "${getData.read("userLogin")["id"]}"};
+    // Keep pool and own-car earnings/trip history separate rather than
+    // blending both into one feed for a driver who does both.
+    final mode = Get.isRegistered<DriverModeController>()
+        ? Get.find<DriverModeController>().mode
+        : null;
+    Map body = {
+      "uid": "${getData.read("userLogin")["id"]}",
+      if (mode != null) "mode": mode,
+    };
 
     try {
       String url = Confing.baseurl + Confing.earning;
@@ -177,7 +187,11 @@ class EarningScreenController extends GetxController {
   List get withdrawText => _withdrawText;
   set withdrawText(List value) => _withdrawText.value = value;
 
-  final RxList _paymentType = ["UPI", "BANK Transfer", "Paypal"].obs;
+  // UPI and Paypal are shown as options in the underlying legacy API but the
+  // backend only ever processes 'BANK Transfer' (request_withdraw.php
+  // rejects anything else with "not available yet") — offering them here
+  // just lets a driver fill out a form that's guaranteed to fail.
+  final RxList _paymentType = ["BANK Transfer"].obs;
   List get paymentType => _paymentType;
   set paymentType(List value) => _paymentType.value = value;
 

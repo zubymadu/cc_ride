@@ -11,6 +11,8 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../../controllers/account_controllers/profile_controllers/personal_details_controller.dart';
+import '../../../controllers/account_controllers/profile_controllers/verification_controllers/email_varification_controller.dart';
+import '../../../controllers/account_controllers/profile_controllers/verification_controllers/mobile_varification_controller.dart';
 
 class PersonalDetailsView extends GetView<PersonalDetailsController> {
   const PersonalDetailsView({super.key});
@@ -56,7 +58,7 @@ class PersonalDetailsView extends GetView<PersonalDetailsController> {
                       controller.ccode.isNotEmpty) {
                     if (controller.selectImage != null) {
                       controller
-                          .updateProfileImage(img: controller.base64Url.value)
+                          .updateProfileImage()
                           .then((_) {
                         controller.updateProfile(
                           name: controller.nameController.text,
@@ -169,38 +171,84 @@ class PersonalDetailsView extends GetView<PersonalDetailsController> {
 
               const SizedBox(height: 16),
               _label("Phone Number"),
-              customPhoneField(
+              Obx(() => customPhoneField(
                 hintText: "801 234 5678",
                 controller: controller.phoneController,
                 textInputAction: TextInputAction.next,
-                readOnly:
-                    getData.read("userLogin")["is_mobile_verify"] == "1",
+                readOnly: controller.isMobileVerified,
                 borderRadius: BorderRadius.circular(CCRadius.input),
+                suffixIcon: controller.isMobileVerified
+                    ? const Icon(Icons.verified_rounded,
+                        color: ccPrimary, size: 20)
+                    : TextButton(
+                        // mobileVarificationBottomSheet() routes through a
+                        // real SMS-OTP send (Msg91/Twilio) that has no
+                        // provider configured on this backend — it always
+                        // fails. Registration already treats the mobile
+                        // number itself as the verified credential (see
+                        // legacyRegUser); this just applies that same
+                        // resolution to legacy accounts that predate it.
+                        onPressed: () async {
+                          await Get.put(MobileVarificationController())
+                              .quickVerifyMobile();
+                          controller.isMobileVerified =
+                              getData.read("userLogin")["is_mobile_verify"] ==
+                                  "1";
+                        },
+                        child: const Text(
+                          "Verify",
+                          style: TextStyle(
+                            fontFamily: 'Inter',
+                            fontWeight: FontWeight.w600,
+                            color: ccPrimary,
+                          ),
+                        ),
+                      ),
                 onTap: () {
-                  if (getData.read("userLogin")["is_mobile_verify"] == "1") {
+                  if (controller.isMobileVerified) {
                     showToastMessage(
                         "Your phone number has been verified and cannot be updated.");
                   }
                 },
                 onCountryChanged: (v) => controller.ccode = "+${v.dialCode}",
-              ),
+              )),
 
               const SizedBox(height: 16),
               _label("Email Address"),
-              _ProfileField(
+              Obx(() => _ProfileField(
                 hintText: "name@company.com",
                 controller: controller.emailController,
-                readOnly: getData.read("userLogin")["is_email_verify"] == "1",
+                readOnly: controller.isEmailVerified,
                 keyboardType: TextInputType.emailAddress,
                 textInputAction: TextInputAction.next,
+                suffixIcon: controller.isEmailVerified
+                    ? const Icon(Icons.verified_rounded,
+                        color: ccPrimary, size: 20)
+                    : TextButton(
+                        onPressed: () async {
+                          await Get.put(EmailVarificationController())
+                              .emailVarificationBottomSheet();
+                          controller.isEmailVerified =
+                              getData.read("userLogin")["is_email_verify"] ==
+                                  "1";
+                        },
+                        child: const Text(
+                          "Verify",
+                          style: TextStyle(
+                            fontFamily: 'Inter',
+                            fontWeight: FontWeight.w600,
+                            color: ccPrimary,
+                          ),
+                        ),
+                      ),
                 onTap: () {
-                  if (getData.read("userLogin")["is_email_verify"] == "1") {
+                  if (controller.isEmailVerified) {
                     showToastMessage(
                         "Your email has been verified and cannot be updated.");
                   }
                 },
                 validator: (v) => controller.validateEmail(v),
-              ),
+              )),
 
               const SizedBox(height: 16),
               _label("Password"),

@@ -41,13 +41,17 @@ class EarningApiModel {
 
     factory EarningApiModel.fromJson(Map<String, dynamic> json) => EarningApiModel(
         driverUid: json["driver_uid"],
-        totalCompleted: json["total_completed"],
-        totalCancelled: json["total_cancelled"],
-        totalPending: json["total_pending"],
-        wLimit: json["w_limit"],
-        totalKmDriven: json["total_km_driven"]?.toDouble(),
+        // Backend sends these as numbers, but callers (e.g. num.parse(wLimit!)
+        // in the withdraw sheet) expect real String objects — convert here so
+        // the runtime type always matches what's declared, regardless of
+        // whether the backend sends a number or a string.
+        totalCompleted: json["total_completed"] == null ? null : '${json["total_completed"]}',
+        totalCancelled: json["total_cancelled"] == null ? null : '${json["total_cancelled"]}',
+        totalPending: json["total_pending"] == null ? null : '${json["total_pending"]}',
+        wLimit: json["w_limit"] == null ? null : '${json["w_limit"]}',
+        totalKmDriven: double.tryParse('${json["total_km_driven"]}'),
         totalEarning: json["total_earning"],
-        totalPayout: json["total_payout"],
+        totalPayout: json["total_payout"] == null ? null : '${json["total_payout"]}',
         currency: json["currency"],
         pastTrips: json["pastTrips"] == null ? [] : List<PastTrip>.from(json["pastTrips"]!.map((x) => PastTrip.fromJson(x))),
         responseCode: json["ResponseCode"],

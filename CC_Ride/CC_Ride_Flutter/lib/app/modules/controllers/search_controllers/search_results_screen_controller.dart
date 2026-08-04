@@ -7,6 +7,7 @@ import 'package:carride/utils/cc_ds.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:get/get.dart';
+import 'package:intl/intl.dart';
 
 import '../../../data/confing.dart';
 
@@ -31,6 +32,10 @@ class SearchResultsScreenController extends GetxController with GetSingleTickerP
       debugPrint("---------- destinationLat --------- ${Get.arguments["destinationLat"]}");
       debugPrint("--------- destinationLong --------- ${Get.arguments["destinationLong"]}");
       debugPrint("------------- tripDate ------------ ${Get.arguments["tripDate"]}");
+      final initialTab = Get.arguments["initialTab"];
+      if (initialTab is int && initialTab >= 0 && initialTab < tabController.length) {
+        tabController.index = initialTab;
+      }
       findTripController.allIsLoading = false;
       update();
       findTripController.findtripApi(
@@ -66,11 +71,18 @@ class SearchResultsScreenController extends GetxController with GetSingleTickerP
     required String tripIsReturn,
     required String totalRate,
     required String totalDriven,
+    String routeCode = '',
+    bool isFull = false,
+    String remainSeat = '',
+    DateTime? startDateTime,
+    VoidCallback? onJoinWaitlist,
   }) {
     List image = [
       "assets/image/svg/arrow-down-circle-filled.svg",
       "assets/image/svg/locationpinfilled.svg",
     ];
+    final isNight = startDateTime != null &&
+        (startDateTime.hour < 6 || startDateTime.hour >= 18);
     return InkWell(
       onTap: onTap,
       child: Container(
@@ -82,6 +94,51 @@ class SearchResultsScreenController extends GetxController with GetSingleTickerP
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (routeCode.isNotEmpty || startDateTime != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  children: [
+                    if (routeCode.isNotEmpty)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: ccIceBlue,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          routeCode,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontFamily: 'Inter',
+                            fontWeight: FontWeight.w700,
+                            color: ccPrimary,
+                          ),
+                        ),
+                      ),
+                    const Spacer(),
+                    if (startDateTime != null) ...[
+                      Icon(
+                        isNight
+                            ? Icons.nightlight_round
+                            : Icons.wb_sunny_rounded,
+                        size: 14,
+                        color: isNight ? ccSecondaryText : Colors.orange,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Starts ${DateFormat('h:mm a').format(startDateTime)}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontFamily: 'Inter',
+                          fontWeight: FontWeight.w600,
+                          color: ccSecondaryText,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -133,35 +190,16 @@ class SearchResultsScreenController extends GetxController with GetSingleTickerP
                             i == 0
                               ? SizedBox(height: 3)
                               : SizedBox(),
-                            Row(
-                              children: [
-                                i == 0
-                                    ? Expanded(
-                                        child: Text(
-                                          date[i],
-                                          overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(
-                                            color: ccSecondaryText,
-                                            fontFamily: 'Inter', fontWeight: FontWeight.w500,
-                                            fontSize: 14,
-                                          ),
-                                        ),
-                                      )
-                                    : SizedBox(),
-                                if (i == 0)...[
-                                  SizedBox(width: 5),
-                                  Text(
-                                    "$totalSeat Seats",
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      color: Colors.grey,
-                                      fontFamily: 'Inter', fontWeight: FontWeight.w500,
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
+                            if (i == 0)
+                              Text(
+                                'Pickup ETA: ${date[0]}',
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: ccSecondaryText,
+                                  fontFamily: 'Inter', fontWeight: FontWeight.w500,
+                                  fontSize: 14,
+                                ),
+                              ),
                             SizedBox(height: 3),
                             Text(
                               i == 0 ? "Pickup point" : "Destination",
@@ -191,6 +229,49 @@ class SearchResultsScreenController extends GetxController with GetSingleTickerP
                 ],
               ],
             ),
+            if (remainSeat.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Icon(
+                    isFull ? Icons.error_outline_rounded : Icons.event_seat_rounded,
+                    size: 14,
+                    color: isFull ? Colors.orange : ccSecondaryText,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    isFull ? '0 seats left' : '$remainSeat seats left',
+                    style: TextStyle(
+                      fontFamily: 'Inter',
+                      fontWeight: FontWeight.w500,
+                      fontSize: 12,
+                      color: isFull ? Colors.orange : ccSecondaryText,
+                    ),
+                  ),
+                  const Spacer(),
+                  if (isFull && onJoinWaitlist != null)
+                    SizedBox(
+                      height: 30,
+                      child: ElevatedButton(
+                        onPressed: onJoinWaitlist,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: ccPrimary,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(horizontal: 14),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8)),
+                        ),
+                        child: const Text('Join waitlist',
+                            style: TextStyle(
+                                fontFamily: 'Inter',
+                                fontWeight: FontWeight.w600,
+                                fontSize: 12,
+                                color: Colors.white)),
+                      ),
+                    ),
+                ],
+              ),
+            ],
             Padding(
               padding: EdgeInsets.symmetric(vertical: 5),
               child: Divider(color: ccInputBorder, thickness: 1),

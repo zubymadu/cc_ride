@@ -84,6 +84,17 @@ class TripRequestList extends GetView<TripScreenController> {
                                 'avgRating': '${item.avgRating}',
                                 'ridesTaken': '${item.ridesTaken}',
                                 'userId': '${item.userId}',
+                                // Gates the "Invite to join a trip" button on
+                                // the preview screen — without this the
+                                // button never rendered here at all, so a
+                                // driver browsing the request queue via this
+                                // (correct, dedicated) screen had no way to
+                                // actually pick one up. legacyRequestList
+                                // only ever returns still-open requests, so
+                                // isInvited is always '0' for anything
+                                // reachable from this list.
+                                'findTrip': true,
+                                'isInvited': '0',
                               },
                             );
                           },

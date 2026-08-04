@@ -1,6 +1,7 @@
 import { Request, Response } from 'express'
 import { prisma } from '../../lib/prisma'
 import { ok, fail, serverError } from '../../lib/response'
+import { assertCompanyScope } from '../../lib/adminScope'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = prisma as any
@@ -11,7 +12,8 @@ const adminDb = prisma.adminUser as any
 
 export async function listRegions(req: Request, res: Response) {
   try {
-    const { companyId } = req.params
+    const companyId = String(req.params.companyId)
+    if (!assertCompanyScope(req, res, companyId)) return
     const regions = await db.companyRegion.findMany({
       where: { companyId },
       orderBy: { name: 'asc' },
@@ -27,7 +29,8 @@ export async function listRegions(req: Request, res: Response) {
 
 export async function createRegion(req: Request, res: Response) {
   try {
-    const { companyId } = req.params
+    const companyId = String(req.params.companyId)
+    if (!assertCompanyScope(req, res, companyId)) return
     const { name, code } = req.body as { name: string; code?: string }
     if (!name) { fail(res, 'Region name is required'); return }
 
@@ -45,13 +48,14 @@ export async function createRegion(req: Request, res: Response) {
 
 export async function listBranches(req: Request, res: Response) {
   try {
-    const { companyId } = req.params
+    const companyId = String(req.params.companyId)
+    if (!assertCompanyScope(req, res, companyId)) return
     const branches = await db.companyBranch.findMany({
       where: { companyId },
       orderBy: [{ regionId: 'asc' }, { name: 'asc' }],
       include: {
         region: { select: { id: true, name: true } },
-        _count: { select: { employees: true, bookings: true } },
+        _count: { select: { employees: { where: { isActive: true } }, bookings: true } },
       },
     })
     ok(res, branches.map((b: any) => ({
@@ -80,7 +84,8 @@ export async function listBranches(req: Request, res: Response) {
 
 export async function createBranch(req: Request, res: Response) {
   try {
-    const { companyId } = req.params
+    const companyId = String(req.params.companyId)
+    if (!assertCompanyScope(req, res, companyId)) return
     const {
       name, code, region_id, address, city, state,
       contact_name, contact_phone, contact_email,
@@ -124,6 +129,10 @@ export async function updateBranch(req: Request, res: Response) {
       contact_name, contact_phone, contact_email,
       is_headquarters, is_active, billed_separately,
     } = req.body as any
+
+    const existing = await db.companyBranch.findUnique({ where: { id: BigInt(branchId) }, select: { companyId: true } })
+    if (!existing) { fail(res, 'Branch not found'); return }
+    if (!assertCompanyScope(req, res, existing.companyId)) return
 
     const branch = await db.companyBranch.update({
       where: { id: BigInt(branchId) },
@@ -195,6 +204,10 @@ export async function getBranchCreditLedger(req: Request, res: Response) {
     const page  = Math.max(1, parseInt(req.query.page as string) || 1)
     const limit = 20
 
+    const branchScope = await db.companyBranch.findUnique({ where: { id: BigInt(branchId) }, select: { companyId: true } })
+    if (!branchScope) { fail(res, 'Branch not found'); return }
+    if (!assertCompanyScope(req, res, branchScope.companyId)) return
+
     const [branch, credits, total] = await Promise.all([
       db.companyBranch.findUnique({ where: { id: BigInt(branchId) }, select: { walletBalance: true } }),
       db.branchCredit.findMany({
@@ -231,6 +244,7 @@ export async function getBranchCreditLedger(req: Request, res: Response) {
 export async function listBranchAdmins(req: Request, res: Response) {
   try {
     const companyId = req.params.companyId as string
+    if (!assertCompanyScope(req, res, companyId)) return
     const branchId  = req.query.branch_id as string | undefined
     const admins = await adminDb.findMany({
       where: { scopeCompanyId: companyId, scopeBranchId: branchId ? BigInt(branchId) : undefined },
@@ -247,11 +261,24 @@ export async function listBranchAdmins(req: Request, res: Response) {
 
 export async function createBranchAdmin(req: Request, res: Response) {
   try {
-    const { companyId } = req.params
+    const companyId = String(req.params.companyId)
+    if (!assertCompanyScope(req, res, companyId)) return
     const { username, email, password, branch_id } = req.body as {
       username: string; email: string; password: string; branch_id?: string
     }
     if (!username || !email || !password) { fail(res, 'username, email and password are required'); return }
+
+    // companyId above is already verified as this admin's own scope (or a
+    // super-admin's free choice) — but branch_id is a separate id from the
+    // request body, so it must be checked independently to belong to that
+    // same company. Otherwise a scoped admin could scope the new admin to
+    // a branch under a different company while keeping scopeCompanyId
+    // pinned to their own — a mismatched, confusing privilege that other
+    // branch-scoped checks elsewhere assume can't happen.
+    if (branch_id) {
+      const branch = await db.companyBranch.findUnique({ where: { id: BigInt(branch_id) }, select: { companyId: true } })
+      if (!branch || branch.companyId !== companyId) { fail(res, 'Branch does not belong to this company'); return }
+    }
 
     const bcrypt = await import('bcryptjs')
     const hash   = await bcrypt.default.hash(password, 12)

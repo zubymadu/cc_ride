@@ -2,31 +2,39 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users, Car, Building2, MapPin, Radio,
   CreditCard, LifeBuoy, Settings, LogOut, Menu, X,
-  Bell, CheckSquare, BarChart2, FileText,
+  Bell, CheckSquare, BarChart2, FileText, Percent, Trash2,
 } from 'lucide-react'
 import { useState } from 'react'
 import { useAuthStore } from '../store/auth'
 import { cn } from '../lib/utils'
 
+// superAdminOnly items hit backend routes gated to requireSuperAdmin — hiding
+// them for a scoped (company) admin isn't just cosmetic, it keeps the nav
+// honest about what will actually work rather than leading to a 403.
 const NAV = [
-  { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/users',     icon: Users,           label: 'Users' },
-  { to: '/drivers',   icon: Car,             label: 'Drivers' },
+  { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard',     superAdminOnly: true },
+  { to: '/users',     icon: Users,           label: 'Users',         superAdminOnly: true },
+  { to: '/drivers',   icon: Car,             label: 'Drivers',       superAdminOnly: true },
   { to: '/companies', icon: Building2,       label: 'Companies' },
-  { to: '/rides',     icon: MapPin,          label: 'Rides' },
-  { to: '/tracking',  icon: Radio,           label: 'Live Tracking' },
+  { to: '/rides',     icon: MapPin,          label: 'Rides',         superAdminOnly: true },
+  { to: '/tracking',  icon: Radio,           label: 'Live Tracking', superAdminOnly: true },
   { to: '/approvals', icon: CheckSquare,     label: 'Approvals' },
-  { to: '/analytics', icon: BarChart2,       label: 'Analytics' },
-  { to: '/billing',   icon: FileText,        label: 'Billing' },
-  { to: '/payments',  icon: CreditCard,      label: 'Payments' },
-  { to: '/support',   icon: LifeBuoy,        label: 'Support' },
-  { to: '/settings',  icon: Settings,        label: 'Settings' },
+  { to: '/analytics', icon: BarChart2,       label: 'Analytics',     superAdminOnly: true },
+  { to: '/billing',   icon: FileText,        label: 'Billing',       superAdminOnly: true },
+  { to: '/pricing',   icon: Percent,         label: 'Pricing',       superAdminOnly: true },
+  { to: '/payments',  icon: CreditCard,      label: 'Payments',      superAdminOnly: true },
+  { to: '/support',   icon: LifeBuoy,        label: 'Support',       superAdminOnly: true },
+  { to: '/settings',  icon: Settings,        label: 'Settings',      superAdminOnly: true },
+  { to: '/housekeeping', icon: Trash2,       label: 'Housekeeping',  superAdminOnly: true },
 ]
+
+export const SUPER_ADMIN_ONLY_PATHS = NAV.filter((n) => n.superAdminOnly).map((n) => n.to)
 
 export default function Layout() {
   const [open, setOpen] = useState(false)
   const { admin, logout } = useAuthStore()
   const navigate = useNavigate()
+  const visibleNav = NAV.filter((n) => !n.superAdminOnly || admin?.isSuperAdmin)
 
   function handleLogout() { logout(); navigate('/login') }
 
@@ -39,14 +47,22 @@ export default function Layout() {
         open ? 'translate-x-0' : '-translate-x-full',
       )} style={{ background: '#0A1628' }}>
 
-        {/* Logo */}
+        {/* Logo — swaps to the company's own branding for a scoped admin */}
         <div className="flex items-center gap-3 px-6 py-5 border-b border-white/10">
-          <div className="w-9 h-9 rounded-lg bg-brand-500 flex items-center justify-center shadow-card">
-            <Car className="w-4 h-4 text-white" />
+          <div className="w-9 h-9 rounded-lg bg-brand-500 flex items-center justify-center shadow-card overflow-hidden flex-shrink-0">
+            {!admin?.isSuperAdmin && admin?.companyLogoUrl ? (
+              <img src={admin.companyLogoUrl} alt={admin.companyName ?? 'Company logo'} className="w-full h-full object-cover" />
+            ) : (
+              <Car className="w-4 h-4 text-white" />
+            )}
           </div>
-          <div>
-            <p className="text-white font-bold text-sm leading-none tracking-tight">CC Ride</p>
-            <p className="text-white/40 text-xs mt-0.5 font-medium">Admin Portal</p>
+          <div className="min-w-0">
+            <p className="text-white font-bold text-sm leading-none tracking-tight truncate">
+              {!admin?.isSuperAdmin && admin?.companyName ? admin.companyName : 'CC Ride'}
+            </p>
+            <p className="text-white/40 text-xs mt-0.5 font-medium">
+              {!admin?.isSuperAdmin && admin?.companyName ? 'via CC Ride Admin' : 'Admin Portal'}
+            </p>
           </div>
           <button onClick={() => setOpen(false)} className="ml-auto lg:hidden text-white/40 hover:text-white">
             <X className="w-5 h-5" />
@@ -55,7 +71,7 @@ export default function Layout() {
 
         {/* Nav */}
         <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-          {NAV.map(({ to, icon: Icon, label }) => (
+          {visibleNav.map(({ to, icon: Icon, label }) => (
             <NavLink key={to} to={to} onClick={() => setOpen(false)}
               className={({ isActive }) => cn(
                 'flex items-center gap-3 px-3.5 py-2.5 rounded-md text-sm font-medium transition-all duration-150',
@@ -122,7 +138,7 @@ export default function Layout() {
             </div>
             <div className="hidden sm:block">
               <p className="text-sm font-semibold text-ink leading-none">{admin?.username}</p>
-              <p className="text-xs text-ink-subtle mt-0.5">Global Admin</p>
+              <p className="text-xs text-ink-subtle mt-0.5">{admin?.isSuperAdmin ? 'Global Admin' : 'Company Admin'}</p>
             </div>
           </div>
         </header>

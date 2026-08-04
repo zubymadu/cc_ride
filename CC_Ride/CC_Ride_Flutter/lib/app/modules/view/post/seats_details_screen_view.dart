@@ -4,6 +4,7 @@ import 'package:carride/widgets/custom_widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../../controllers/post_controllers/post_trip_controller.dart';
 import '../../controllers/post_controllers/seats_details_screen_controller.dart';
 
 class SeatsDetailsScreenView extends GetView<SeatsDetailsScreenController> {
@@ -175,7 +176,85 @@ class SeatsDetailsScreenView extends GetView<SeatsDetailsScreenController> {
                   // ── Price per seat ─────────────────────────────────────
                   _SectionCard(
                     title: "Price Per Seat",
-                    child: TextFormField(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        GetBuilder<PostTripController>(
+                          init: controller.postTripController,
+                          builder: (postTripController) {
+                            if (postTripController.isEstimating) {
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 10),
+                                child: Row(
+                                  children: [
+                                    SizedBox(
+                                      width: 14,
+                                      height: 14,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: ccPrimary,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      "Estimating a fair price…",
+                                      style: CCText.labelSm
+                                          .copyWith(color: ccSecondaryText),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }
+                            if (!postTripController.hasRouteEstimate) {
+                              return const SizedBox.shrink();
+                            }
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 10),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 10),
+                              decoration: BoxDecoration(
+                                color: ccIceBlue,
+                                borderRadius:
+                                    BorderRadius.circular(CCRadius.input),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.auto_awesome_rounded,
+                                      size: 16, color: ccPrimary),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      "Suggested price: $currency${postTripController.routeEstimatedFare.toStringAsFixed(0)}"
+                                      "${postTripController.routeDistanceKm > 0 ? ' · ${postTripController.routeDistanceKm.toStringAsFixed(1)} km' : ''}",
+                                      style: CCText.labelSm.copyWith(
+                                          color: ccNavyText,
+                                          fontWeight: FontWeight.w600),
+                                    ),
+                                  ),
+                                  GestureDetector(
+                                    onTap: () {
+                                      final suggested = postTripController
+                                          .routeEstimatedFare
+                                          .toStringAsFixed(0);
+                                      controller.seatpricecontroller.text =
+                                          suggested;
+                                      postTripController.seatPrice =
+                                          suggested;
+                                      controller.update();
+                                    },
+                                    child: Text(
+                                      "Use this".tr,
+                                      style: CCText.labelSm.copyWith(
+                                          color: ccPrimary,
+                                          fontWeight: FontWeight.w700),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                        TextFormField(
                       controller: controller.seatpricecontroller,
                       keyboardType: const TextInputType.numberWithOptions(
                           decimal: true),
@@ -232,6 +311,8 @@ class SeatsDetailsScreenView extends GetView<SeatsDetailsScreenController> {
                               color: ccPrimary, width: 1.5),
                         ),
                       ),
+                    ),
+                      ],
                     ),
                   ),
 
@@ -300,7 +381,7 @@ class SeatsDetailsScreenView extends GetView<SeatsDetailsScreenController> {
                                 padding: const EdgeInsets.only(left: 17),
                                 child: SizedBox(
                                   width: 2,
-                                  height: 20,
+                                  height: 36,
                                   child: controller.buildDashedLine(),
                                 ),
                               ),
@@ -350,7 +431,7 @@ class SeatsDetailsScreenView extends GetView<SeatsDetailsScreenController> {
                               padding: const EdgeInsets.only(left: 17),
                               child: SizedBox(
                                 width: 2,
-                                height: 20,
+                                height: 36,
                                 child: controller.buildDashedLine(),
                               ),
                             ),
@@ -360,28 +441,31 @@ class SeatsDetailsScreenView extends GetView<SeatsDetailsScreenController> {
                         const Divider(color: ccInputBorder, height: 1),
                         const SizedBox(height: 14),
 
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: ccIceBlue,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.info_outline_rounded,
-                                  color: ccPrimary, size: 16),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  "${"Recommended".tr}: $currency${controller.postTripController.seatPrice} ${"or less per seat".tr}",
-                                  style: CCText.bodyMd
-                                      .copyWith(color: ccPrimary),
+                        Obx(() {
+                          if (!controller.hasEstimate) return const SizedBox.shrink();
+                          return Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: ccIceBlue,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.info_outline_rounded,
+                                    color: ccPrimary, size: 16),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    "${"Platform-suggested fare".tr}: $currency${controller.estimatedFare.toStringAsFixed(0)} ${"per seat — you can still set your own".tr}",
+                                    style: CCText.bodyMd
+                                        .copyWith(color: ccPrimary),
+                                  ),
                                 ),
-                              ),
-                            ],
-                          ),
-                        ),
+                              ],
+                            ),
+                          );
+                        }),
 
                         const SizedBox(height: 14),
 

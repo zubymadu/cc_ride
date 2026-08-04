@@ -2,6 +2,7 @@
 
 import 'package:carride/utils/cc_ds.dart';
 import 'package:carride/app/data/data_store.dart';
+import 'package:carride/app/modules/controllers/driver_mode/driver_mode_controller.dart';
 import 'package:carride/app/routes/app_pages.dart';
 import 'package:carride/widgets/custom_widgets.dart';
 import 'package:flutter/material.dart';
@@ -111,6 +112,17 @@ class PostReqPreiviewScreenView
                                   getData.read('userLogin')[
                                           'is_email_verify'] ==
                                       '1') {
+                                // Accepting a passenger's request here puts
+                                // this user in the driver's seat for that
+                                // trip — same mid-session mode switch as
+                                // "I'm driving" in postTripBottomsheet, so it
+                                // needs the same DriverModeController
+                                // reconciliation or the bottom nav stays
+                                // stuck on passenger tabs afterward.
+                                if (Get.isRegistered<DriverModeController>()) {
+                                  Get.find<DriverModeController>()
+                                      .switchToDriving();
+                                }
                                 Get.toNamed(
                                   Routes.MULTIPOLYLINE_MAP_SCREEN,
                                   arguments: {

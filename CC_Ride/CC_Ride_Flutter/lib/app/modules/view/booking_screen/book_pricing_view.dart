@@ -238,6 +238,14 @@ class BookPricingView extends GetView<BookPricingController> {
                             value:
                                 "$currency${c.subTotal.toStringAsFixed(1)}",
                           ),
+                          if (c.hasEstimate) ...[
+                            const SizedBox(height: 8),
+                            _PriceRow(
+                              label: "Estimated fare (platform)",
+                              value:
+                                  "$currency${c.estimatedFare.toStringAsFixed(1)}",
+                            ),
+                          ],
                           if (c.isUseWallet) ...[
                             const SizedBox(height: 8),
                             _PriceRow(

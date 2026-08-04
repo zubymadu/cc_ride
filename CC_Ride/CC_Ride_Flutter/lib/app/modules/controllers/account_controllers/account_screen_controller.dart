@@ -49,6 +49,7 @@ class AccountScreenController extends GetxController {
     "Help",
     "Refer a friend",
     "Language",
+    "Messages",
   ].obs;
   List get proferences => _proferences;
   set proferences(List value) => _proferences.value = value;
@@ -76,6 +77,7 @@ class AccountScreenController extends GetxController {
   Map<String, String> userHeader = {
     "Content-type": "application/json",
     "Accept": "application/json",
+    "Authorization": "Bearer ${getData.read('token') ?? ''}",
   };
 
   Future pageListApi() async {

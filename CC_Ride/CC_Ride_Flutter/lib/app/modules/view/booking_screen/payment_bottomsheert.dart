@@ -155,19 +155,50 @@ payBottomsheet({required String totalAmt}) {
                                 c.isLoading = true;
                                 c.update();
                                 final pid = c.paymentId;
-                                final attrs = c
+                                final selectedData = c
                                     .paymentGatewayListController
                                     .paymentGatewayListApiModel!
-                                    .paymentdata![paymentIndex]
-                                    .attributes;
-                                if (pid == '1') {
-                                  c.razorPayClass.openCheckout(
-                                    key: '$attrs',
-                                    amount: totalAmt,
-                                    number:
-                                        '${getData.read('userLogin')['mobile']}',
-                                    name:
-                                        '${getData.read('userLogin')['name']}',
+                                    .paymentdata![paymentIndex];
+                                final attrs = selectedData.attributes;
+                                final gatewayType = selectedData.gatewayType;
+                                if (gatewayType == 'paystack') {
+                                  payStackApiController
+                                      .payStackApi(
+                                          email:
+                                              '${getData.read('userLogin')['email']}',
+                                          amount: totalAmt)
+                                      .then((value) {
+                                    c.isLoading = false;
+                                    c.update();
+                                    if (value != null &&
+                                        value['status'] == true &&
+                                        value['data'] != null &&
+                                        value['data']['authorization_url'] !=
+                                            null) {
+                                      c.webViewPaymentMethod(
+                                        initialUrl:
+                                            '${value['data']['authorization_url']}',
+                                        status1: 'status',
+                                        status2: 'success',
+                                        tId: 'trxref',
+                                      );
+                                    } else {
+                                      showToastMessage(
+                                          '${value?["ResponseMsg"] ?? "Unable to start Paystack payment"}');
+                                    }
+                                  }).catchError((e) {
+                                    c.isLoading = false;
+                                    c.update();
+                                    showToastMessage(
+                                        'Unable to start Paystack payment');
+                                  });
+                                } else if (gatewayType == 'flutterwave') {
+                                  c.webViewPaymentMethod(
+                                    initialUrl:
+                                        '${Confing.imageurl + Confing.flutterwave}amt=$totalAmt&email=${getData.read('userLogin')['email']}',
+                                    status1: 'status',
+                                    status2: 'successful',
+                                    tId: 'transaction_id',
                                   );
                                 } else if (pid == '3') {
                                   final ids =

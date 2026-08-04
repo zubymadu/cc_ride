@@ -122,6 +122,8 @@ class LoginScreenController extends GetxController with GetSingleTickerProviderS
           // JWT + company for the corporate module (Node backend)
           save("token", data["token"] ?? "");
           save("companyId", data["company_id"] ?? "");
+          save("companyName", data["company_name"] ?? "");
+          save("employeeNumber", data["employee_number"] ?? "");
           save("isUserLogin", true);
           authService.firebaseStoreData(
             uid: "${data["UserLogin"]["id"]}",

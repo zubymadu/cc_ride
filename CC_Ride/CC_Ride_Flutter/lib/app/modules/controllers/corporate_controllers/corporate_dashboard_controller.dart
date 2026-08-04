@@ -87,6 +87,7 @@ class CorporateDashboardController extends GetxController {
   void goToBudgets() => Get.toNamed(Routes.BUDGET_MANAGEMENT);
   void goToApprovals() => Get.toNamed(Routes.APPROVAL_QUEUE);
   void goToPolicies() => Get.toNamed(Routes.RIDE_POLICY);
+  void goToRoutes() => Get.toNamed(Routes.ROUTE_MANAGEMENT);
 
   String get pendingLabel {
     final count = dashData?.pendingApprovals ?? 0;

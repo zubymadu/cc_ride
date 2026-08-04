@@ -4,7 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 class BookDetailsController extends GetxController {
-  TripPreviewScreenController tripPreviewScreenController = Get.put(TripPreviewScreenController());
+  // Reuse the instance populated by trip_preview_screen_view.dart's API call —
+  // Get.put() here would replace it with a blank controller and wipe the data.
+  TripPreviewScreenController tripPreviewScreenController =
+      Get.isRegistered<TripPreviewScreenController>()
+          ? Get.find<TripPreviewScreenController>()
+          : Get.put(TripPreviewScreenController());
 
   final buttonKey = GlobalKey<FormState>();
 

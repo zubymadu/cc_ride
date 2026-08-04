@@ -277,6 +277,8 @@ class CorporateDashboardView extends GetView<CorporateDashboardController> {
               const Color(0xFFFF9900), c.goToApprovals),
           _actionTile(
               'Policies', Icons.shield_outlined, ccPrimary, c.goToPolicies),
+          _actionTile('Shared Routes', Icons.add_road_outlined,
+              const Color(0xFF0EA5A5), c.goToRoutes),
         ],
       );
 

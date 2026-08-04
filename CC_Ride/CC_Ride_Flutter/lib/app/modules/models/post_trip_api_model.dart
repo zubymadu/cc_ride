@@ -12,7 +12,10 @@ class PostTripApiModel {
     String? responseCode;
     String? result;
     String? responseMsg;
-    List<int>? parentTripIds;
+    // The ride id is a UUID string, not a numeric id — this used to be
+    // typed List<int>, which meant the model could never actually hold the
+    // real trip id in the first place.
+    List<String>? parentTripIds;
 
     PostTripApiModel({
         this.responseCode,
@@ -25,7 +28,7 @@ class PostTripApiModel {
         responseCode: json["ResponseCode"],
         result: json["Result"],
         responseMsg: json["ResponseMsg"],
-        parentTripIds: json["parent_trip_ids"] == null ? [] : List<int>.from(json["parent_trip_ids"]!.map((x) => x)),
+        parentTripIds: json["parent_trip_ids"] == null ? [] : List<String>.from(json["parent_trip_ids"]!.map((x) => "$x")),
     );
 
     Map<String, dynamic> toJson() => {

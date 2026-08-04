@@ -9,6 +9,8 @@ interface PlatformSettings {
   default_commission_rate: number; booking_fee: number
   driver_payout_threshold: number; max_cancellation_minutes: number
   surge_multiplier_max: number; maintenance_mode: boolean
+  pricing_model: 'driver_set' | 'platform_computed'
+  default_base_fare: number; default_fare_per_km: number; default_fare_per_min: number
   paystack_public_key: string; paystack_secret_key_masked: string
   flutterwave_public_key: string; flutterwave_secret_key_masked: string
   google_maps_key_masked: string; firebase_project_id: string
@@ -142,6 +144,44 @@ export default function Settings() {
                   <input className="input w-28" type="number" step="0.1" min={1} max={5}
                     value={form.surge_multiplier_max ?? 2.5} onChange={(e) => set('surge_multiplier_max', parseFloat(e.target.value))} />
                   <span className="text-sm text-gray-500">×</span>
+                </div>
+              </Field>
+
+              <div className="border-b border-gray-100 pb-1 pt-2"><p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Fare Pricing Model</p></div>
+              <Field label="Pricing Model" hint="Applies to non-shared/ad-hoc rides — shared routes are always driver-set">
+                <div className="flex gap-2">
+                  {(['driver_set', 'platform_computed'] as const).map((m) => (
+                    <button key={m} type="button" onClick={() => set('pricing_model', m)}
+                      className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${form.pricing_model === m ? 'bg-brand-500 text-white border-brand-500' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+                      {m === 'driver_set' ? 'Driver Sets Fare' : 'Platform Computes Fare'}
+                    </button>
+                  ))}
+                </div>
+              </Field>
+              <p className="text-xs text-gray-400 -mt-2">
+                {form.pricing_model === 'platform_computed'
+                  ? 'The fare below is computed automatically and shown to the passenger as the expected fare, and to the driver as a suggested price.'
+                  : 'Drivers set their own fare freely. The formula below is not applied to any charge, but still available as a reference estimate.'}
+              </p>
+              <Field label="Base Fare">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-500">₦</span>
+                  <input className="input w-28" type="number" value={form.default_base_fare ?? 500}
+                    onChange={(e) => set('default_base_fare', parseFloat(e.target.value))} />
+                </div>
+              </Field>
+              <Field label="Fare per Km">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-500">₦</span>
+                  <input className="input w-28" type="number" value={form.default_fare_per_km ?? 150}
+                    onChange={(e) => set('default_fare_per_km', parseFloat(e.target.value))} />
+                </div>
+              </Field>
+              <Field label="Fare per Minute">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-500">₦</span>
+                  <input className="input w-28" type="number" value={form.default_fare_per_min ?? 10}
+                    onChange={(e) => set('default_fare_per_min', parseFloat(e.target.value))} />
                 </div>
               </Field>
             </Fields>

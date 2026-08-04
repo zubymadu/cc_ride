@@ -15,7 +15,16 @@ class BottomBarScreenView extends GetView<BottomBarScreenController> {
 
   @override
   Widget build(BuildContext context) {
-    final controller = Get.put(BottomBarScreenController());
+    // Get.put() re-creates the controller and re-runs onInit() on every call
+    // — and this build() re-runs on route/theme rebuilds, not just once. Since
+    // onInit() schedules the driver-mode prompt via postFrameCallback, calling
+    // Get.put() unconditionally here re-fired that prompt on every rebuild,
+    // stacking a new bottom sheet right after the last one was dismissed —
+    // making it look permanently stuck open. Reuse the existing instance
+    // instead of recreating it.
+    final controller = Get.isRegistered<BottomBarScreenController>()
+        ? Get.find<BottomBarScreenController>()
+        : Get.put(BottomBarScreenController());
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
@@ -39,17 +48,15 @@ class _BottomNav extends StatelessWidget {
   const _BottomNav({required this.controller});
   final BottomBarScreenController controller;
 
-  static const _labels = ["Home", "Rides", "Messages", "Wallet", "Profile"];
-  static const _icons = [
-    Icons.home_rounded,
-    Icons.directions_car_rounded,
-    Icons.chat_bubble_rounded,
-    Icons.account_balance_wallet_rounded,
-    Icons.person_rounded,
-  ];
-
   @override
   Widget build(BuildContext context) {
+    final isDriver = controller.driverModeController.isDriverMode;
+    final labels = controller.text;
+    final icons = [
+      isDriver ? Icons.directions_car_filled_rounded : Icons.home_rounded,
+      isDriver ? Icons.list_alt_rounded : Icons.confirmation_number_rounded,
+      Icons.person_rounded,
+    ];
     return Container(
       height: 72,
       decoration: const BoxDecoration(
@@ -60,7 +67,7 @@ class _BottomNav extends StatelessWidget {
       child: SafeArea(
         top: false,
         child: Row(
-          children: List.generate(5, (i) {
+          children: List.generate(labels.length, (i) {
             final active = controller.index == i;
             return Expanded(
               child: GestureDetector(
@@ -81,17 +88,17 @@ class _BottomNav extends StatelessWidget {
                       ),
                     ),
                     // Icon
-                    i == 4
+                    i == labels.length - 1
                         ? _profileIcon(active)
                         : Icon(
-                            _icons[i],
+                            icons[i],
                             size: 24,
                             color: active ? ccPrimary : ccSecondaryText,
                           ),
                     const SizedBox(height: 2),
                     // Label
                     Text(
-                      _labels[i],
+                      labels[i],
                       style: TextStyle(
                         fontFamily: 'Inter',
                         fontSize: 11,
@@ -151,7 +158,7 @@ class _BottomNav extends StatelessWidget {
 
   void _onTap(int i) {
     final loggedIn = getData.read("userLogin") != null;
-    if (!loggedIn && (i == 2 || i == 3 || i == 4)) {
+    if (!loggedIn && i == controller.text.length - 1) {
       Get.offAllNamed(Routes.LOGIN_SCREEN);
     } else {
       controller.index = i;

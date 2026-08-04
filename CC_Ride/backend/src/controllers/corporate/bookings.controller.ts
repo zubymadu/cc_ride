@@ -3,6 +3,8 @@ import { z } from 'zod'
 import { prisma } from '../../lib/prisma'
 import { ok, fail, serverError } from '../../lib/response'
 import { dec } from '../../lib/naira'
+import { computeFareSplit } from '../../lib/pricingService'
+import { checkPoolRideEligibility, checkWalletPaymentEligibility } from '../../lib/poolAccessService'
 import crypto from 'crypto'
 
 // ─── POST /corporate/bookings/check-policy ────────────────────────────────────
@@ -24,7 +26,12 @@ const CheckPolicySchema = z.object({
 export async function checkPolicy(req: Request, res: Response) {
   try {
     const data       = CheckPolicySchema.parse(req.body)
-    const companyId  = req.companyId ?? data.company_id
+    // requireCompanyMember always sets req.companyId from a verified, active
+    // CompanyEmployee row before this handler runs — asserting it (rather
+    // than falling back to data.company_id) means a future refactor that
+    // removes the middleware from this route fails loudly instead of
+    // silently starting to trust a client-supplied company id.
+    const companyId  = req.companyId!
     const now        = new Date()
 
     // Load all active policies for this company / department
@@ -169,8 +176,12 @@ const BookSchema = z.object({
   book_method:      z.string().default('Instant'),
   subtotal:         z.string().or(z.number()).transform(Number),
   total_amount:     z.string().or(z.number()).transform(Number),
-  cou_amt:          z.string().or(z.number()).transform(Number).default(0),
-  wall_amt:         z.string().or(z.number()).transform(Number).default(0),
+  cou_amt:          z.string().or(z.number()).transform(Number).pipe(z.number().nonnegative()).default(0),
+  // Fed straight into a `decrement` on Company.walletBalance — a negative
+  // value here would flip that into an increment, letting any employee
+  // credit their own company's wallet through a booking request. Crediting
+  // is reserved for super-admin via creditCompany/creditBranch only.
+  wall_amt:         z.string().or(z.number()).transform(Number).pipe(z.number().nonnegative()).default(0),
   driver_alert_info: z.string().default(''),
   booking_fees:     z.string().or(z.number()).transform(Number).default(0),
   department_id:    z.string().optional(),
@@ -181,7 +192,10 @@ const BookSchema = z.object({
 export async function createCorporateBooking(req: Request, res: Response) {
   try {
     const data      = BookSchema.parse(req.body)
-    const companyId = req.companyId ?? data.company_id
+    // Same reasoning as checkPolicy above — requireCompanyMember guarantees
+    // this before the handler runs, so assert it rather than falling back
+    // to a client-supplied value.
+    const companyId = req.companyId!
     const userId    = req.user.id
 
     // Verify ride exists
@@ -192,12 +206,39 @@ export async function createCorporateBooking(req: Request, res: Response) {
       return
     }
 
-    const platformCommission = await prisma.platformSettings
-      .findUnique({ where: { id: 1 } })
-      .then((s) => dec(s?.platformCommission ?? 15))
+    // Resolved via the pricing engine (super-admin PricingRateCard layers +
+    // Company.commissionRate, company scope = the sponsoring company so a
+    // negotiated corporate rate applies) rather than reading
+    // PlatformSettings.platformCommission directly. Pool-vehicle detection
+    // (driver earns organisation points, not cash) is resolved internally
+    // from ride.vehicleId — a corporate booking on a pool vehicle now
+    // correctly zeroes driver cash earnings the same way the personal-app
+    // booking path already does, instead of always treating it as a cash ride.
+    const { driverEarning, platformCommission: commissionAmt, isPoolRide, poolCompanyId, poolBranchId } = await computeFareSplit({
+      subtotal: data.subtotal,
+      bookingFeeAmount: data.booking_fees,
+      vehicleId: ride.vehicleId,
+      companyId,
+    })
 
-    const commissionAmt = (data.subtotal * platformCommission) / 100
-    const driverEarning = data.subtotal - commissionAmt
+    // The pool vehicle's owning company (poolCompanyId) isn't necessarily
+    // the same as the sponsoring company paying for this booking (companyId
+    // above) — an employee booking a ride that happens to run on a
+    // different organisation's pool vehicle is exactly the cross-company
+    // sharing case that needs gating.
+    if (isPoolRide && poolCompanyId) {
+      const eligibility = await checkPoolRideEligibility({ passengerUserId: userId, poolCompanyId, poolBranchId })
+      if (!eligibility.allowed) { fail(res, eligibility.reason ?? 'You are not eligible to book this pool vehicle'); return }
+    }
+
+    // wall_amt here always means the SPONSORING company's own funds (this
+    // booking's companyId), never the passenger's personal wallet — that's
+    // what "corporate booking" means. Gated the same way pool access is:
+    // off by default, admin-granted, optionally time-windowed.
+    if (data.wall_amt > 0) {
+      const walletEligibility = await checkWalletPaymentEligibility({ userId, companyId })
+      if (!walletEligibility.allowed) { fail(res, walletEligibility.reason ?? 'You are not eligible to pay with your company wallet'); return }
+    }
 
     const deptId = data.department_id ? BigInt(data.department_id) : null
     const ccId   = data.cost_centre_id ? BigInt(data.cost_centre_id) : null
@@ -259,6 +300,35 @@ export async function createCorporateBooking(req: Request, res: Response) {
             },
           })
         }
+      }
+
+      // Debit the company wallet immediately, same condition as the budget
+      // spend above — only if this booking doesn't need approval first. A
+      // requires_approval booking defers the actual debit to decideApproval,
+      // since debiting now and having the request later rejected would mean
+      // refunding rather than simply never having spent it.
+      if (!data.requires_approval && data.wall_amt > 0) {
+        // Conditional update, not a separate read-then-write — guards
+        // against two concurrent bookings both passing a balance check
+        // before either commits and overdrawing the account.
+        const debited = await tx.company.updateMany({
+          where: { id: companyId, walletBalance: { gte: data.wall_amt } },
+          data:  { walletBalance: { decrement: data.wall_amt } },
+        })
+        if (debited.count === 0) throw new Error('INSUFFICIENT_WALLET_BALANCE')
+
+        const after = await tx.company.findUniqueOrThrow({ where: { id: companyId }, select: { walletBalance: true } })
+        await tx.companyCredit.create({
+          data: {
+            companyId,
+            amount:        -data.wall_amt,
+            balanceAfter:  after.walletBalance,
+            paymentMethod: 'ride_payment',
+            bookingId:     b.id,
+            creditedById:  null,
+            note:          `Ride payment — ${ride.originAddress} → ${ride.destinationAddress}`,
+          },
+        })
       }
 
       // Create approval request if needed
@@ -346,6 +416,9 @@ export async function createCorporateBooking(req: Request, res: Response) {
         ? 'Booking submitted for approval'
         : 'Ride booked successfully')
   } catch (err) {
+    if (err instanceof Error && err.message === 'INSUFFICIENT_WALLET_BALANCE') {
+      fail(res, 'Insufficient company wallet balance for this ride'); return
+    }
     serverError(res, err)
   }
 }

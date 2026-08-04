@@ -11,6 +11,13 @@ import { listPolicies, createPolicy, togglePolicy }
                                                 from '../../controllers/corporate/policies.controller'
 import { checkPolicy, createCorporateBooking, cancelApproval }
                                                 from '../../controllers/corporate/bookings.controller'
+import { listPoolVehicles, registerPoolVehicle, listDriverVehicleAccess,
+         grantDriverVehicleAccess, revokeDriverVehicleAccess, approvePersonalVehicle }
+                                                from '../../controllers/corporate/vehicles.controller'
+import { listRoutes, createRoute, listRouteSchedules, createRouteSchedule }
+                                                from '../../controllers/corporate/routes.controller'
+import { createAccessRequest, listMyAccessRequests }
+                                                from '../../controllers/corporate/accessRequests.controller'
 
 const router = Router()
 
@@ -46,5 +53,24 @@ router.post('/policies/toggle',  requireCompanyMember, requireAdminRole, toggleP
 router.post('/bookings/check-policy',    requireCompanyMember, checkPolicy)
 router.post('/bookings/book',            requireCompanyMember, createCorporateBooking)
 router.post('/bookings/cancel-approval', requireCompanyMember, cancelApproval)
+
+// ─── Pool vehicles & driver access (admin manages, any employee reads own access) ─
+router.get('/pool-vehicles',                        requireCompanyMember, requireAdminRole, listPoolVehicles)
+router.post('/pool-vehicles',                        requireCompanyMember, requireAdminRole, registerPoolVehicle)
+router.get('/driver-access',                         requireCompanyMember, listDriverVehicleAccess)
+router.post('/driver-access/grant',                  requireCompanyMember, requireAdminRole, grantDriverVehicleAccess)
+router.post('/driver-access/revoke',                 requireCompanyMember, requireAdminRole, revokeDriverVehicleAccess)
+router.post('/employees/:employee_id/approve-personal-vehicle',
+                                                      requireCompanyMember, requireAdminRole, approvePersonalVehicle)
+
+// ─── Access requests (any employee asks, admin decides via /admin/*) ─────────
+router.post('/access-requests',      requireCompanyMember, createAccessRequest)
+router.get('/access-requests/mine',  requireCompanyMember, listMyAccessRequests)
+
+// ─── Fixed routes (Find Shared Route) ─────────────────────────────────────────
+router.get('/routes',                  requireCompanyMember, requireAdminRole, listRoutes)
+router.post('/routes',                 requireCompanyMember, requireAdminRole, createRoute)
+router.get('/routes/:id/schedules',    requireCompanyMember, requireAdminRole, listRouteSchedules)
+router.post('/routes/:id/schedules',   requireCompanyMember, requireAdminRole, createRouteSchedule)
 
 export default router

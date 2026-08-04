@@ -12,6 +12,17 @@ import 'package:http/http.dart' as http;
 
 class PostTripController extends GetxController {
 
+  @override
+  void onInit() {
+    super.onInit();
+    // Re-estimate whenever the pieces the fare depends on change, debounced
+    // so rapid map-picker updates while dragging pins don't fire a request
+    // per pixel.
+    debounce(_originLat, (_) => estimateRouteFareApi(), time: const Duration(milliseconds: 600));
+    debounce(_destiLat, (_) => estimateRouteFareApi(), time: const Duration(milliseconds: 600));
+    debounce(_vehicleId, (_) => estimateRouteFareApi(), time: const Duration(milliseconds: 600));
+  }
+
   PostTripApiModel? postTripApiModel;
 
   final RxBool _isLoading = false.obs;
@@ -29,6 +40,9 @@ class PostTripController extends GetxController {
   final RxString _originLat = "".obs;
   String get originLat => _originLat.value;
   set originLat(String value) => _originLat.value = value;
+  // Exposes the Rx itself (not just its .value) so other controllers can
+  // `ever()`/`debounce()` it — the plain getter above only reads a snapshot.
+  RxString get originLatRx => _originLat;
 
   final RxString _originLong = "".obs;
   String get originLong => _originLong.value;
@@ -41,6 +55,7 @@ class PostTripController extends GetxController {
   final RxString _destiLat = "".obs;
   String get destiLat => _destiLat.value;
   set destiLat(String value) => _destiLat.value = value;
+  RxString get destiLatRx => _destiLat;
 
   final RxString _destiLong = "".obs;
   String get destiLong => _destiLong.value;
@@ -61,6 +76,7 @@ class PostTripController extends GetxController {
   final RxString _vehicleId = "".obs;
   String get vehicleId => _vehicleId.value;
   set vehicleId(String value) => _vehicleId.value = value;
+  RxString get vehicleIdRx => _vehicleId;
 
   final RxString _skipVehicle = "".obs;
   String get skipVehicle => _skipVehicle.value;
@@ -105,7 +121,61 @@ class PostTripController extends GetxController {
   Map<String, String> userHeader = {
     "Content-type": "application/json",
     "Accept": "application/json",
+    "Authorization": "Bearer ${getData.read('token') ?? ''}",
   };
+
+  // Fare estimate shown live on the "post a trip" screen so a driver can see
+  // what the platform thinks a fair price is before they type their own
+  // seat_price — same /estimate_fare.php endpoint used at booking time
+  // (see BookPricingController.estimateFareApi), just called earlier in the
+  // flow, as soon as origin/destination/vehicle are known.
+  final RxBool _hasRouteEstimate = false.obs;
+  bool get hasRouteEstimate => _hasRouteEstimate.value;
+  set hasRouteEstimate(bool value) => _hasRouteEstimate.value = value;
+
+  final RxDouble _routeEstimatedFare = 0.0.obs;
+  double get routeEstimatedFare => _routeEstimatedFare.value;
+  set routeEstimatedFare(double value) => _routeEstimatedFare.value = value;
+
+  final RxDouble _routeDistanceKm = 0.0.obs;
+  double get routeDistanceKm => _routeDistanceKm.value;
+  set routeDistanceKm(double value) => _routeDistanceKm.value = value;
+
+  final RxBool _isEstimating = false.obs;
+  bool get isEstimating => _isEstimating.value;
+  set isEstimating(bool value) => _isEstimating.value = value;
+
+  Future<void> estimateRouteFareApi() async {
+    if (originLat.isEmpty || originLong.isEmpty || destiLat.isEmpty || destiLong.isEmpty) {
+      hasRouteEstimate = false;
+      return;
+    }
+    isEstimating = true;
+    update();
+    try {
+      final body = {
+        "origin_lat": originLat,
+        "origin_long": originLong,
+        "desti_lat": destiLat,
+        "desti_long": destiLong,
+        if (vehicleId.isNotEmpty) "vehicle_id": vehicleId,
+      };
+      final response = await http
+          .post(Uri.parse(Confing.baseurl + Confing.estimateFare), body: jsonEncode(body), headers: userHeader)
+          .timeout(const Duration(seconds: 15));
+      final data = jsonDecode(response.body);
+      if (response.statusCode == 200 && data["Result"] == "true") {
+        routeEstimatedFare = double.tryParse("${data["data"]?["estimated_fare"] ?? 0}") ?? 0;
+        routeDistanceKm = double.tryParse("${data["data"]?["distance_km"] ?? 0}") ?? 0;
+        hasRouteEstimate = routeEstimatedFare > 0;
+      }
+    } catch (e) {
+      log(name: "=========== Route Estimate Fare error ===========", "$e");
+    } finally {
+      isEstimating = false;
+      update();
+    }
+  }
 
   Future posttripApi() async {
     isLoading = true;
@@ -119,8 +189,8 @@ class PostTripController extends GetxController {
       "desti_lat": destiLat,
       "desti_long": destiLong,
       "ride_schedule": rideSchedule,
-      "start_date": startDate,
-      "start_time": startTime,
+      "trip_start_date": startDate,
+      "trip_start_time": startTime,
       "skip_vehicle": skipVehicle,
       "vehicle_id": vehicleId,
       "return_date": returnDate,
@@ -130,12 +200,20 @@ class PostTripController extends GetxController {
       "restriction_list": restrictionList,
       "total_seat": totalSeat,
       "seat_price": seatPrice,
-      "book_preference": "Manual",
+      // Was hardcoded "Manual" with no UI toggle anywhere to actually choose
+      // it — since the backend never read this field before, it silently
+      // did nothing. Now that book_preference gates whether a booking
+      // auto-confirms or waits for driver approval (see legacyBookSeat),
+      // sending "Manual" unconditionally here would have made every future
+      // one-time/recurring trip require manual approval platform-wide, an
+      // unintended behavior change. "Auto" preserves today's instant-booking
+      // experience; manual approval is opt-in only via Create Route.
+      "book_preference": "Auto",
       "trip_description": tripDescription,
       "request_id": requestId,
       "stopdata": stopData,
     };
-    
+
     Map returnTripbody = {
       "uid": "${getData.read("userLogin")["id"]}",
       "origin_address": originAddress,
@@ -145,8 +223,8 @@ class PostTripController extends GetxController {
       "desti_lat": destiLat,
       "desti_long": destiLong,
       "ride_schedule": rideSchedule,
-      "start_date": startDate,
-      "start_time": startTime,
+      "trip_start_date": startDate,
+      "trip_start_time": startTime,
       "return_date": returnDate,
       "return_time": returnTime,
       "skip_vehicle": skipVehicle,
@@ -156,7 +234,15 @@ class PostTripController extends GetxController {
       "restriction_list": restrictionList,
       "total_seat": totalSeat,
       "seat_price": seatPrice,
-      "book_preference": "Manual",
+      // Was hardcoded "Manual" with no UI toggle anywhere to actually choose
+      // it — since the backend never read this field before, it silently
+      // did nothing. Now that book_preference gates whether a booking
+      // auto-confirms or waits for driver approval (see legacyBookSeat),
+      // sending "Manual" unconditionally here would have made every future
+      // one-time/recurring trip require manual approval platform-wide, an
+      // unintended behavior change. "Auto" preserves today's instant-booking
+      // experience; manual approval is opt-in only via Create Route.
+      "book_preference": "Auto",
       "trip_description": tripDescription,
       "request_id": requestId,
       "stopdata": stopData,
@@ -171,8 +257,8 @@ class PostTripController extends GetxController {
       "desti_lat": destiLat,
       "desti_long": destiLong,
       "ride_schedule": rideSchedule,
-      "start_date": startDate,
-      "start_time": startTime,
+      "trip_start_date": startDate,
+      "trip_start_time": startTime,
       "return_date": returnDate,
       "return_time": returnTime,
       "skip_vehicle": skipVehicle,
@@ -182,7 +268,15 @@ class PostTripController extends GetxController {
       "restriction_list": restrictionList,
       "total_seat": totalSeat,
       "seat_price": seatPrice,
-      "book_preference": "Manual",
+      // Was hardcoded "Manual" with no UI toggle anywhere to actually choose
+      // it — since the backend never read this field before, it silently
+      // did nothing. Now that book_preference gates whether a booking
+      // auto-confirms or waits for driver approval (see legacyBookSeat),
+      // sending "Manual" unconditionally here would have made every future
+      // one-time/recurring trip require manual approval platform-wide, an
+      // unintended behavior change. "Auto" preserves today's instant-booking
+      // experience; manual approval is opt-in only via Create Route.
+      "book_preference": "Auto",
       "trip_description": tripDescription,
       "request_id": requestId,
       "stopdata": stopData,
@@ -211,7 +305,7 @@ class PostTripController extends GetxController {
             Get.toNamed(
               Routes.TRIP_PREVIEW_SCREEN,
               arguments: {
-                "tripId" : "${postTripApiModel!.parentTripIds!.first}",
+                "tripId" : postTripApiModel!.parentTripIds!.first,
                 "postTrip" : true,
               },
             );
@@ -250,8 +344,8 @@ class PostTripController extends GetxController {
       "desti_lat": destiLat,
       "desti_long": destiLong,
       "ride_schedule": rideSchedule,
-      "start_date": startDate,
-      "start_time": startTime,
+      "trip_start_date": startDate,
+      "trip_start_time": startTime,
       "seat_price": seatPrice,
       "total_seat": totalSeat,
       "skip_vehicle": skipVehicle,
@@ -280,7 +374,7 @@ class PostTripController extends GetxController {
       if (response.statusCode == 200) {
         if (data["Result"] == "true") {
           showToastMessage("${data["ResponseMsg"]}");
-          Get.offAllNamed(Routes.BOTTOM_BAR_SCREEN, arguments: 2);
+          Get.offAllNamed(Routes.BOTTOM_BAR_SCREEN, arguments: 1);
           postDataEmpty();
           return data;
         } else {

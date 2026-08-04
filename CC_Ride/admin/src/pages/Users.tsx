@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Search, UserX, ShieldAlert, Loader2, Users as UsersIcon } from 'lucide-react'
+import { Search, UserX, ShieldAlert, Loader2, Users as UsersIcon, Trash2 } from 'lucide-react'
 import { get, post } from '../lib/api'
 import { fmt, badge } from '../lib/utils'
+import { deleteWithForceConfirm } from '../lib/deleteWithConfirm'
 import PageHeader from '../components/PageHeader'
 import EmptyState from '../components/EmptyState'
 
@@ -29,6 +30,11 @@ export default function Users() {
       post('/admin/users/action', { user_id: userId, action }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-users'] }),
   })
+
+  async function handleDelete(u: User) {
+    const deleted = await deleteWithForceConfirm(`/admin/users/${u.id}`, u.name)
+    if (deleted) qc.invalidateQueries({ queryKey: ['admin-users'] })
+  }
 
   const filtered = data.filter((u) =>
     !search || u.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -133,6 +139,13 @@ export default function Users() {
                             Activate
                           </button>
                         )}
+                        <button
+                          onClick={() => handleDelete(u)}
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                          title="Delete (housekeeping)"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       </div>
                     </td>
                   </tr>

@@ -45,14 +45,14 @@ class SearchTrip extends GetView<SearchResultsScreenController> {
                 startDateTime.add(Duration(minutes: totalMinutes));
             tripEndTime.value =
                 DateFormat("EEE, MMM d 'at' h:mm a").format(endDateTime);
+            void goToPreview() => Get.toNamed(Routes.TRIP_PREVIEW_SCREEN,
+                arguments: {
+                  'tripId': '${trips[index].tripId}',
+                  'findtrip': true,
+                });
             return c.findTripDetailsData(
-              onTap: () {
-                Get.toNamed(Routes.TRIP_PREVIEW_SCREEN,
-                    arguments: {
-                      'tripId': '${trips[index].tripId}',
-                      'findtrip': true,
-                    });
-              },
+              onTap: goToPreview,
+              onJoinWaitlist: goToPreview,
               date: [
                 DateFormat("EEE, MMM d 'at' h:mma").format(
                     DateTime.parse(
@@ -71,6 +71,10 @@ class SearchTrip extends GetView<SearchResultsScreenController> {
               totalRate: '${trips[index].avgRating}',
               totalSeat: '${trips[index].totalSeat}',
               tripIsReturn: '${trips[index].tripIsReturn}',
+              routeCode: trips[index].routeCode ?? '',
+              isFull: (trips[index].remainSeat ?? 1) <= 0,
+              remainSeat: '${trips[index].remainSeat ?? 0}',
+              startDateTime: startDateTime,
             );
           },
           separatorBuilder: (_, __) => const SizedBox(height: 10),

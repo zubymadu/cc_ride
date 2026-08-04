@@ -114,12 +114,12 @@ class OneTimeTrip extends GetView<RideScheduleScreenController> {
                           if (picked != controller.selectedTime) {
                             final now = DateTime.now();
                             controller.selectedTime = picked;
+                            // hour/minute are always 24-hour internally —
+                            // don't use format(context) here, it's
+                            // locale-dependent and splitting off the AM/PM
+                            // marker silently produces the wrong time.
                             controller.postTripController.startTime =
-                                picked
-                                    .format(context)
-                                    .toString()
-                                    .split(' ')
-                                    .first;
+                                '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
                             controller.originTime = DateTime(
                                 now.year,
                                 now.month,
@@ -238,12 +238,11 @@ class OneTimeTrip extends GetView<RideScheduleScreenController> {
                             final picked = value;
                             final now = DateTime.now();
                             controller.selectedTime1 = picked;
+                            // Same fix as departure time above — build from
+                            // hour/minute, not the locale-dependent
+                            // format(context) string.
                             controller.postTripController.returnTime =
-                                picked
-                                    .format(context)
-                                    .toString()
-                                    .split(' ')
-                                    .first;
+                                '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
                             controller.originTime1 = DateTime(
                                 now.year,
                                 now.month,

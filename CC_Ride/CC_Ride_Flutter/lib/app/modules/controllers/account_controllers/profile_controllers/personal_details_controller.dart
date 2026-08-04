@@ -21,13 +21,21 @@ class PersonalDetailsController extends GetxController {
     phoneController = TextEditingController(text: getData.read("userLogin")["mobile"]);
     emailController = TextEditingController(text: getData.read("userLogin")["email"]);
     nameController = TextEditingController(text: getData.read("userLogin")["name"]);
-    dobController = TextEditingController(text: getData.read("userLogin")["dob"].toString().split(" ").first);
+    // getData.read(...)["dob"] is null for anyone who hasn't set a date of
+    // birth yet — calling .toString() on a null value produces the literal
+    // string "null" in Dart, which then made the field visibly show "null"
+    // and made selectDate() below throw when parsing it back.
+    final rawDob = getData.read("userLogin")["dob"];
+    dobController = TextEditingController(
+        text: rawDob == null ? "" : "$rawDob".split(" ").first);
     bioController = TextEditingController(text: getData.read("userLogin")["bio"]);
     // passwordController = TextEditingController(text: getData.read("userLogin")["password"]);
     ccode = "${getData.read("userLogin")["ccode"]}";
     if (getData.read("userLogin")["is_driver"] != null) {
       isDriver = getData.read("userLogin")["is_driver"] == "0" || getData.read("userLogin")["is_driver"] == null ? false : true;
     }
+    isMobileVerified = getData.read("userLogin")["is_mobile_verify"] == "1";
+    isEmailVerified = getData.read("userLogin")["is_email_verify"] == "1";
     update();
     debugPrint("---------- phoneController ---------- ${phoneController.text}");
     debugPrint("---------- emailController ---------- ${emailController.text}");
@@ -65,10 +73,29 @@ class PersonalDetailsController extends GetxController {
   bool get isDriver => _isDriver.value;
   set isDriver(bool value) => _isDriver.value = value;
 
+  // getData.read('userLogin') is a plain synchronous local-storage read, not
+  // reactive — the Verify buttons in the view were updating storage
+  // correctly on success but the screen never rebuilt to show it, so the
+  // button appeared to silently do nothing even though verification had
+  // gone through. These mirror the stored flags so the view can watch them.
+  final RxBool _isMobileVerified = false.obs;
+  bool get isMobileVerified => _isMobileVerified.value;
+  set isMobileVerified(bool value) => _isMobileVerified.value = value;
+
+  final RxBool _isEmailVerified = false.obs;
+  bool get isEmailVerified => _isEmailVerified.value;
+  set isEmailVerified(bool value) => _isEmailVerified.value = value;
+
   Future<String?> selectDate(BuildContext context) async {
+    // dobController.text is empty until a date has ever been picked (see
+    // onInit above) — DateTime.parse("") throws, which silently killed this
+    // whole method before the picker ever opened. Fall back to a sensible
+    // default (25 years ago) the first time, same as picking any other date.
+    final existing = DateTime.tryParse(dobController.text);
+    final initial = existing ?? DateTime.now().subtract(const Duration(days: 365 * 25));
     DateTime? picked = await showDatePicker(
       context: context,
-      initialDate: DateTime.parse(dobController.text),
+      initialDate: initial,
       firstDate: DateTime(1900),
       lastDate: DateTime.now(),
       builder: (context, child) {
@@ -88,7 +115,12 @@ class PersonalDetailsController extends GetxController {
       },
     );
     if (picked != null) {
-      return "${picked.year}-${picked.month}-${picked.day}";
+      // Zero-padding matters — an unpadded "2027-1-5" isn't valid ISO-8601
+      // and the backend's `new Date(dob)` silently produces Invalid Date
+      // for any 1st-9th-of-month birthdate, corrupting dateOfBirth.
+      final mm = picked.month.toString().padLeft(2, '0');
+      final dd = picked.day.toString().padLeft(2, '0');
+      return "${picked.year}-$mm-$dd";
     }
     return null;
   }
@@ -110,9 +142,13 @@ class PersonalDetailsController extends GetxController {
     return null; // valid
   }
 
+  // profile_edit.php and pro_image.php both require requireAuth (a Bearer
+  // token) server-side — this was missing entirely, so every save here was
+  // silently rejected with 401 regardless of what was actually filled in.
   Map<String, String> userHeader = {
     "Content-type": "application/json",
-    "Accept": "application/json"
+    "Accept": "application/json",
+    "Authorization": "Bearer ${getData.read('token') ?? ''}",
   };
 
   Future updateProfile({
@@ -178,28 +214,37 @@ class PersonalDetailsController extends GetxController {
     }
   }
 
-  Future updateProfileImage({required String img}) async {
+  Future updateProfileImage() async {
     isLoading = true;
     update();
-    Map body = {
-      "uid": "${getData.read("userLogin")["id"]}",
-      "img": img,
-    };
+
+    // pro_image.php is mounted behind multer's fileUpload.single('photo') —
+    // it only ever populates req.file from a genuine multipart/form-data
+    // request. Posting a base64 string in a JSON body (as this used to do)
+    // left req.file undefined every single time, so the endpoint always
+    // failed with "photo required" regardless of what the user picked.
+    final path = selectImage?.path;
+    if (path == null) {
+      isLoading = false;
+      update();
+      return;
+    }
 
     String url = Confing.baseurl + Confing.proImage;
-
     log(name: "============== Update Profile Image url =============", url);
-    log(name: "============== Update Profile Image body ============", "$body");
+    log(name: "============== Update Profile Image path ============", path);
 
     try {
-      var response = await http.post(
-        Uri.parse(url),
-        body: jsonEncode(body),
-        headers: userHeader,
-      );
+      final request = http.MultipartRequest('POST', Uri.parse(url));
+      request.headers['Authorization'] = 'Bearer ${getData.read('token') ?? ''}';
+      request.fields['uid'] = "${getData.read("userLogin")["id"]}";
+      request.files.add(await http.MultipartFile.fromPath('photo', path));
 
-      log(name: "============= Update Profile Image respon ===========", response.body);
-      var data = jsonDecode(response.body);
+      final response = await request.send();
+      final responseBody = await response.stream.bytesToString();
+
+      log(name: "============= Update Profile Image respon ===========", responseBody);
+      var data = jsonDecode(responseBody);
 
       if (response.statusCode == 200) {
         if (data["Result"] == "true") {

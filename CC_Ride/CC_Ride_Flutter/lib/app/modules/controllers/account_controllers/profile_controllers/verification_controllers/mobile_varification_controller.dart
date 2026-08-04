@@ -29,6 +29,7 @@ class MobileVarificationController extends GetxController {
   Map<String, String> userHeader = {
     "Content-type": "application/json",
     "Accept": "application/json",
+    "Authorization": "Bearer ${getData.read('token') ?? ''}",
   };
 
   final RxBool _verifiIsLoading = false.obs;
@@ -36,6 +37,19 @@ class MobileVarificationController extends GetxController {
   set verifiIsLoading(bool value) => _verifiIsLoading.value = value;
 
   Future verifiMobileApi() async {
+    final data = await _callMobileVerify();
+    if (data != null && data["Result"] == "true") {
+      Get.close(2); // closes the OTP bottomsheet, then the verification sheet
+    }
+    return data;
+  }
+
+  /// Same backend call as verifiMobileApi(), for callers that aren't nested
+  /// inside the two OTP bottomsheets (e.g. the "Verify" action on Personal
+  /// Details) — Get.close(2) there would pop screens the caller never opened.
+  Future quickVerifyMobile() => _callMobileVerify();
+
+  Future _callMobileVerify() async {
     verifiIsLoading = true;
     update();
 
@@ -55,16 +69,12 @@ class MobileVarificationController extends GetxController {
         if (data["Result"] == "true") {
           save("userLogin", data["UserLogin"]);
           showToastMessage("${data["ResponseMsg"]}");
-          Get.close(2);
-          verifiIsLoading = false;
-          update();
-          return data;
         } else {
           showToastMessage("${data["ResponseMsg"]}");
-          verifiIsLoading = false;
-          update();
-          return data;
         }
+        verifiIsLoading = false;
+        update();
+        return data;
       } else {
         showToastMessage("Something went wrong. Please try again.");
         verifiIsLoading = false;

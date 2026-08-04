@@ -6,6 +6,7 @@ import 'dart:math';
 
 import 'package:carride/app/data/confing.dart';
 import 'package:carride/app/data/data_store.dart';
+import 'package:carride/app/modules/controllers/driver_mode/driver_mode_controller.dart';
 import 'package:carride/app/modules/models/trip_list_api_model.dart';
 import 'package:carride/app/modules/models/trip_request_list_api_model.dart';
 import 'package:carride/utils/cc_ds.dart';
@@ -48,7 +49,8 @@ class TripScreenController extends GetxController with GetTickerProviderStateMix
 
   Map<String, String> userHeader = {
     "Content-type": "application/json",
-    "Accept": "application/json"
+    "Accept": "application/json",
+    "Authorization": "Bearer ${getData.read('token') ?? ''}",
   };
 
   Future tripListApi({required String status}) async {
@@ -56,9 +58,15 @@ class TripScreenController extends GetxController with GetTickerProviderStateMix
     update();
     final userLogin = getData.read("userLogin");
     if (userLogin == null) { isLoading = false; update(); return; }
+    // A driver who does both pool and own-car trips would otherwise see
+    // them mixed in the same list — filter to whichever mode is active.
+    final mode = Get.isRegistered<DriverModeController>()
+        ? Get.find<DriverModeController>().mode
+        : null;
     Map body = {
       "uid": userLogin["id"],
       "trip_type" : status,
+      if (mode != null) "mode": mode,
     };
 
     try {

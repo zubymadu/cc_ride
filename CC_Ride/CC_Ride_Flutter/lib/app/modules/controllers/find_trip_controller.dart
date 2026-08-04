@@ -25,9 +25,16 @@ class FindTripController extends GetxController {
   get requestIsLoading => _requestIsLoading.value;
   set requestIsLoading(value) => _requestIsLoading.value = value;
 
-  Map<String, String> userHeader = {
+  // Without this, every "Book a Ride" / nearby-route search hit find_trip.php
+  // as an anonymous request (optionalAuth saw no token → req.user stayed
+  // null) — which silently broke self-trip exclusion (driverId !== userId
+  // always true) and the zero-results auto-queue-as-request path (guarded by
+  // `userId && userId !== '0'`), so unmatched searches never actually
+  // notified drivers despite the app claiming they would.
+  Map<String, String> get userHeader => {
     "Content-type": "application/json",
-    "Accept": "application/json"
+    "Accept": "application/json",
+    "Authorization": "Bearer ${getData.read('token') ?? ''}",
   };
 
   Future findtripApi({
@@ -37,6 +44,8 @@ class FindTripController extends GetxController {
     required String destinationLong,
     required String tripDate,
     required String status,
+    String originAddress = '',
+    String destinationAddress = '',
   }) async {
     // requestIsLoading = true;
     // update();
@@ -47,6 +56,8 @@ class FindTripController extends GetxController {
       "origin_long": originLong,
       "destination_lat": destinationLat,
       "destination_long": destinationLong,
+      "origin_address": originAddress,
+      "destination_address": destinationAddress,
       "trip_date": tripDate,
       "status": status
     };

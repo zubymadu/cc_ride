@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../controllers/help_controller/help_screen_controller.dart';
+import '../../routes/app_pages.dart';
 
 class HelpScreenView extends GetView<HelpScreenController> {
   const HelpScreenView({super.key});
@@ -11,6 +12,16 @@ class HelpScreenView extends GetView<HelpScreenController> {
   @override
   Widget build(BuildContext context) {
     final c = Get.find<HelpScreenController>();
+    // faqListApi() otherwise only ever fires once, at app boot, from inside
+    // BottomBarScreenController.onInit() — competing with several other
+    // cold-start network calls (mode prompt, location, etc). If that single
+    // fire-and-forget attempt fails for any transient reason there's no
+    // retry, so Help stays empty for the rest of the session. Refetch
+    // whenever this screen is actually opened instead of trusting that one
+    // early call succeeded.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      c.faqListApi();
+    });
     return Scaffold(
       backgroundColor: ccBackground,
       appBar: AppBar(
@@ -41,7 +52,49 @@ class HelpScreenView extends GetView<HelpScreenController> {
             : SingleChildScrollView(
                 physics: const BouncingScrollPhysics(),
                 padding: const EdgeInsets.all(16),
-                child: Accordion(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Didn't find an answer above? Raise a ticket instead of
+                    // leaving the rider stuck with a static FAQ list.
+                    GestureDetector(
+                      onTap: () => Get.toNamed(Routes.SUPPORT_TICKETS),
+                      child: Container(
+                        margin: const EdgeInsets.only(bottom: 16),
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: ccPrimary.withOpacity(0.06),
+                          borderRadius: BorderRadius.circular(CCRadius.card),
+                          border: Border.all(color: ccPrimary.withOpacity(0.3)),
+                        ),
+                        child: const Row(
+                          children: [
+                            Icon(Icons.support_agent_rounded, color: ccPrimary),
+                            SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text("Still need help?",
+                                      style: TextStyle(
+                                          fontFamily: 'Inter',
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 14,
+                                          color: ccNavyText)),
+                                  Text("Raise a support ticket and our team will respond",
+                                      style: TextStyle(
+                                          fontFamily: 'Inter',
+                                          fontSize: 12,
+                                          color: ccSecondaryText)),
+                                ],
+                              ),
+                            ),
+                            Icon(Icons.chevron_right_rounded, color: ccSecondaryText),
+                          ],
+                        ),
+                      ),
+                    ),
+                    Accordion(
                   disableScrolling: true,
                   flipRightIconIfOpen: true,
                   rightIcon: const Icon(
@@ -77,6 +130,8 @@ class HelpScreenView extends GetView<HelpScreenController> {
                           ),
                         ),
                       ),
+                  ],
+                ),
                   ],
                 ),
               ),

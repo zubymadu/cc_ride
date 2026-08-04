@@ -18,11 +18,12 @@ class MyBookingScreenController extends GetxController with SingleGetTickerProvi
 
   @override
   void onInit() {
-    myBookingListApi(status: "current").then((value) {
-      myBookingListApi(status: "past").then((value) {
-        isLoading = false;
-        update();
-      });
+    Future.wait([
+      myBookingListApi(status: "current"),
+      myBookingListApi(status: "past"),
+    ]).whenComplete(() {
+      isLoading = false;
+      update();
     });
     super.onInit();
   }
@@ -41,23 +42,22 @@ class MyBookingScreenController extends GetxController with SingleGetTickerProvi
   Map<String, String> userHeader = {
     "Content-type": "application/json",
     "Accept": "application/json",
+    "Authorization": "Bearer ${getData.read('token') ?? ''}",
   };
 
   Future myBookingListApi({required String status}) async {
-    isLoading = true;
-    update();
     Map body = {
-      "uid": "${getData.read("userLogin")["id"]}",
+      "uid": "${getData.read("userLogin")?["id"] ?? ""}",
       "status": status,
     };
 
-    // try {
+    try {
       String url = Confing.baseurl + Confing.mybookTriplist;
       var response = await http.post(
         Uri.parse(url),
         body: jsonEncode(body),
         headers: userHeader,
-      );
+      ).timeout(const Duration(seconds: 15));
       debugPrint("============ My Booking List Api url ============= $url");
       debugPrint("============ My Booking List Api body ============ $body");
       debugPrint("========== My Booking List Api response ========== ${response.body}");
@@ -68,17 +68,13 @@ class MyBookingScreenController extends GetxController with SingleGetTickerProvi
         } else if (status == "past") {
           pastTripListApiModel = myBookTripListApiModelFromJson(response.body);
         }
-        // if (data["Result"] == "true") {
-        // } else {
-        //   showToastMessage("${data["ResponseMsg"]}");
-        // }
         return data;
       } else {
         showToastMessage("Something went wrong!");
       }
-    // } catch (e) {
-    //   debugPrint("============ My Booking List Api Err ============", "$e"");
-    // }
+    } catch (e) {
+      debugPrint("============ My Booking List Api Err ============ $e");
+    }
   }
 
   Widget bookDetailsData({

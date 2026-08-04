@@ -24,6 +24,7 @@ class EmailVarificationController extends GetxController {
   Map<String, String> userHeader = {
     "Content-type": "application/json",
     "Accept": "application/json",
+    "Authorization": "Bearer ${getData.read('token') ?? ''}",
   };
 
   Future emailOtpApi({required String email, bool? openBottomsheet}) async {
@@ -83,7 +84,7 @@ class EmailVarificationController extends GetxController {
     verifiIsLoading = true;
     update();
 
-    Map body = {"uid": "${getData.read("userLogin")["id"]}"};
+    Map body = {"otp": otpController.text};
 
     String url = Confing.baseurl + Confing.verifyEmail;
 

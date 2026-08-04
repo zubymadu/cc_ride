@@ -1,5 +1,4 @@
 import 'package:carride/app/data/confing.dart';
-import 'package:carride/app/data/data_store.dart';
 import 'package:carride/app/routes/app_pages.dart';
 import 'package:carride/utils/cc_ds.dart';
 import 'package:flutter/material.dart';
@@ -14,7 +13,6 @@ class BookDriveView extends GetView<BookDriveController> {
   Widget build(BuildContext context) {
     final tripData = controller
         .tripPreviewScreenController.tripDetailsApiModel?.tripData;
-    final user = getData.read("userLogin");
 
     return Scaffold(
       backgroundColor: ccBackground,
@@ -102,16 +100,18 @@ class BookDriveView extends GetView<BookDriveController> {
                               ),
                             ),
                             const SizedBox(height: 4),
-                            if (user != null && user["rdate"] != null)
+                            if (tripData?.userJoined != null &&
+                                tripData!.userJoined!.isNotEmpty)
                               Text(
-                                "${"Joined".tr} ${DateFormat('MMMM yyyy').format(DateTime.parse("${user["rdate"]}".split(" ").first))}",
+                                "${"Joined".tr} ${DateFormat('MMMM yyyy').format(DateTime.parse(tripData.userJoined!))}",
                                 style: CCText.bodyMd
                                     .copyWith(color: ccSecondaryText),
                               ),
                             const SizedBox(height: 4),
-                            if (user != null && user["dob"] != null)
+                            if (tripData?.userDob != null &&
+                                tripData!.userDob!.isNotEmpty)
                               Text(
-                                "${controller.calculateAge("${user["dob"]}")} ${"years old".tr}",
+                                "${controller.calculateAge(tripData.userDob!)} ${"years old".tr}",
                                 style: CCText.bodyMd
                                     .copyWith(color: ccSecondaryText),
                               ),
@@ -121,7 +121,8 @@ class BookDriveView extends GetView<BookDriveController> {
                     ],
                   ),
 
-                  if (user != null && user["bio"] != null) ...[
+                  if (tripData?.userBio != null &&
+                      tripData!.userBio!.isNotEmpty) ...[
                     const SizedBox(height: 16),
                     Container(
                       height: 1,
@@ -131,7 +132,7 @@ class BookDriveView extends GetView<BookDriveController> {
                     const Text("Bio", style: CCText.titleMd),
                     const SizedBox(height: 8),
                     Text(
-                      "${user["bio"]}",
+                      tripData.userBio!,
                       style: CCText.bodyMd.copyWith(color: ccSecondaryText),
                     ),
                   ],

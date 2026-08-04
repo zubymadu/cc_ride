@@ -7,7 +7,9 @@ import { createServer } from 'http'
 import { Server as SocketServer } from 'socket.io'
 import router from './routes'
 import { prisma } from './lib/prisma'
+import { requireAuth } from './middleware/auth'
 import { legacyPaystackInit, legacyPaystackCallback, legacyPaystackResult } from './controllers/user/legacy.controller'
+import { startRideRequestCleanup } from './lib/rideRequestCleanup'
 
 const app  = express()
 const http = createServer(app)
@@ -82,7 +84,12 @@ app.use('/api', router)
 
 // Paystack wallet top-up shim — the Flutter app calls these at the bare domain
 // root (no /api prefix), matching Confing.imageurl + Confing.payStack.
-app.post('/paystack/index.php',  legacyPaystackInit)
+// legacyPaystackInit reads req.user.id (populated by requireAuth) — without
+// this the handler threw a TypeError on every call, silently swallowed by
+// its own try/catch and surfaced to the client as a generic "Unable to
+// initiate Paystack payment", making every gateway-required booking dead on
+// arrival.
+app.post('/paystack/index.php',  requireAuth, legacyPaystackInit)
 app.get('/paystack_callback.php', legacyPaystackCallback)
 app.get('/paystack_result.php',   legacyPaystackResult)
 
@@ -102,6 +109,7 @@ const PORT = Number(process.env.PORT ?? 3000)
 
 async function start() {
   await prisma.$connect()
+  startRideRequestCleanup()
   http.listen(PORT, () => {
     console.log(`\n  CC Ride API  →  http://localhost:${PORT}/api`)
     console.log(`  Environment  →  ${process.env.NODE_ENV ?? 'development'}\n`)

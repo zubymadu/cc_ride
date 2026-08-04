@@ -13,14 +13,6 @@ class MyBookingScreenView extends GetView<MyBookingScreenController> {
     final c = Get.find<MyBookingScreenController>();
     return GetBuilder<MyBookingScreenController>(
       init: MyBookingScreenController(),
-      initState: (_) {
-        c.myBookingListApi(status: "current").then((_) {
-          c.myBookingListApi(status: "past").then((_) {
-            c.isLoading = false;
-            c.update();
-          });
-        });
-      },
       builder: (_) {
         return Scaffold(
           backgroundColor: ccBackground,

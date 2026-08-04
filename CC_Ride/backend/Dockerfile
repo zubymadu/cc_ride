@@ -4,8 +4,8 @@ RUN apt-get update -qq && apt-get install -y -qq openssl && rm -rf /var/lib/apt/
 COPY package*.json ./
 RUN npm ci
 COPY . .
-RUN npm run build
 RUN npx prisma generate
+RUN npm run build
 
 FROM node:20-slim
 RUN apt-get update -qq && apt-get install -y -qq openssl && rm -rf /var/lib/apt/lists/*

@@ -1,3 +1,4 @@
+import 'package:carride/app/data/app_info.dart';
 import 'package:carride/app/data/data_store.dart';
 import 'package:carride/app/data/one_signal_notification.dart';
 import 'package:carride/firebase_options.dart';
@@ -30,6 +31,7 @@ void main() async{
   // can hang forever — it must never block runApp.
   Future(() => OneSignalService.initializeOneSignal())
       .catchError((_) { /* push notifications optional in demo builds */ });
+  AppInfo.load();
   runApp(MyApp());
 }
 

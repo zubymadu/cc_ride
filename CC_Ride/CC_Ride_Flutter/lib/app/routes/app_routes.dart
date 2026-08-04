@@ -16,12 +16,14 @@ abstract class Routes {
   static const BOTTOM_BAR_SCREEN = _Paths.BOTTOM_BAR_SCREEN;
   static const SEARCH_SCREEN = _Paths.SEARCH_SCREEN;
   static const SEARCH_RESULTS_SCREEN = _Paths.SEARCH_RESULTS_SCREEN;
+  static const TRIP_PLAN_SCREEN = _Paths.TRIP_PLAN_SCREEN;
   static const MULTIPOLYLINE_MAP_SCREEN = _Paths.MULTIPOLYLINE_MAP_SCREEN;
   static const RIDE_SCHEDULE_SCREEN = _Paths.RIDE_SCHEDULE_SCREEN;
   static const VEHICLES_SCREEN = _Paths.VEHICLES_SCREEN;
   static const ADD_VEHICLE_SCREEN = _Paths.ADD_VEHICLE_SCREEN;
   static const SEATS_DETAILS_SCREEN = _Paths.SEATS_DETAILS_SCREEN;
   static const TRIP_PREVIEW_SCREEN = _Paths.TRIP_PREVIEW_SCREEN;
+  static const MATCHED_REQUEST_SCREEN = _Paths.MATCHED_REQUEST_SCREEN;
   static const POST_SCREEN = _Paths.POST_SCREEN;
   static const TRIP_SCREEN = _Paths.TRIP_SCREEN;
   // static const SEATING_PLAN_SCREEN = _Paths.SEATING_PLAN_SCREEN;
@@ -35,8 +37,11 @@ abstract class Routes {
   static const PERSONAL_DETAILS = _Paths.PERSONAL_DETAILS;
   static const VEHICLES_LIST = _Paths.VEHICLES_LIST;
   static const HELP_SCREEN = _Paths.HELP_SCREEN;
+  static const SUPPORT_TICKETS = _Paths.SUPPORT_TICKETS;
+  static const SUPPORT_TICKET_DETAIL = _Paths.SUPPORT_TICKET_DETAIL;
   static const BOOKING_SERVICE = _Paths.BOOKING_SERVICE;
   static const BOOK_DETAILS = _Paths.BOOK_DETAILS;
+  static const ONE_WAY_SUMMARY = _Paths.ONE_WAY_SUMMARY;
   static const BOOK_DRIVE = _Paths.BOOK_DRIVE;
   static const BOOK_PRICING = _Paths.BOOK_PRICING;
   static const WALLET_SCREEN = _Paths.WALLET_SCREEN;
@@ -48,15 +53,20 @@ abstract class Routes {
   static const MESSAGE_LIST = _Paths.MESSAGE_LIST;
   static const MESSAGE_SCREEN = _Paths.MESSAGE_SCREEN;
   static const REFER_SCREEN = _Paths.REFER_SCREEN;
+  static const NOTIFICATION_SCREEN = _Paths.NOTIFICATION_SCREEN;
   static const LANGUAGE_SCREEN = _Paths.LANGUAGE_SCREEN;
   static const EARNING_SCREEN = _Paths.EARNING_SCREEN;
   static const PAYOUT_HISTORY_SCREEN = _Paths.PAYOUT_HISTORY_SCREEN;
+  static const MY_ROUTES_SCREEN = _Paths.MY_ROUTES_SCREEN;
+  static const CREATE_ROUTE_SCREEN = _Paths.CREATE_ROUTE_SCREEN;
+  static const ROUTE_REQUESTS_SCREEN = _Paths.ROUTE_REQUESTS_SCREEN;
   // Corporate
   static const CORPORATE_DASHBOARD = _Paths.CORPORATE_DASHBOARD;
   static const EMPLOYEE_MANAGEMENT = _Paths.EMPLOYEE_MANAGEMENT;
   static const BUDGET_MANAGEMENT = _Paths.BUDGET_MANAGEMENT;
   static const APPROVAL_QUEUE = _Paths.APPROVAL_QUEUE;
   static const RIDE_POLICY = _Paths.RIDE_POLICY;
+  static const ROUTE_MANAGEMENT = _Paths.ROUTE_MANAGEMENT;
   // Corporate booking flow
   static const CORPORATE_BOOKING_CONFIRM = _Paths.CORPORATE_BOOKING_CONFIRM;
   static const APPROVAL_PENDING = _Paths.APPROVAL_PENDING;
@@ -75,12 +85,14 @@ abstract class _Paths {
   static const BOTTOM_BAR_SCREEN = '/bottom-bar-screen';
   static const SEARCH_SCREEN = '/search-screen';
   static const SEARCH_RESULTS_SCREEN = '/search-results-screen';
+  static const TRIP_PLAN_SCREEN = '/trip-plan-screen';
   static const MULTIPOLYLINE_MAP_SCREEN = '/multipolyline-map-screen';
   static const RIDE_SCHEDULE_SCREEN = '/ride-schedule-screen';
   static const VEHICLES_SCREEN = '/vehicles-screen';
   static const ADD_VEHICLE_SCREEN = '/add-vehicle-screen';
   static const SEATS_DETAILS_SCREEN = '/seats-details-screen';
   static const TRIP_PREVIEW_SCREEN = '/trip-preview-screen';
+  static const MATCHED_REQUEST_SCREEN = '/matched-request-screen';
   static const POST_SCREEN = '/post-screen';
   static const TRIP_SCREEN = '/trip-screen';
   // static const SEATING_PLAN_SCREEN = '/seating-plan-screen';
@@ -94,8 +106,11 @@ abstract class _Paths {
   static const PERSONAL_DETAILS = '/personal-details';
   static const VEHICLES_LIST = '/vehicles-list';
   static const HELP_SCREEN = '/help-screen';
+  static const SUPPORT_TICKETS = '/support-tickets';
+  static const SUPPORT_TICKET_DETAIL = '/support-ticket-detail';
   static const BOOKING_SERVICE = '/booking-service';
   static const BOOK_DETAILS = '/book-details';
+  static const ONE_WAY_SUMMARY = '/one-way-summary';
   static const BOOK_DRIVE = '/book-drive';
   static const BOOK_PRICING = '/book-pricing';
   static const WALLET_SCREEN = '/wallet-screen';
@@ -107,15 +122,20 @@ abstract class _Paths {
   static const MESSAGE_LIST = '/message-list';
   static const MESSAGE_SCREEN = '/message-screen';
   static const REFER_SCREEN = '/refer-screen';
+  static const NOTIFICATION_SCREEN = '/notification-screen';
   static const LANGUAGE_SCREEN = '/language-screen';
   static const EARNING_SCREEN = '/earning-screen';
   static const PAYOUT_HISTORY_SCREEN = '/payout-history-screen';
+  static const MY_ROUTES_SCREEN = '/my-routes-screen';
+  static const CREATE_ROUTE_SCREEN = '/create-route-screen';
+  static const ROUTE_REQUESTS_SCREEN = '/route-requests-screen';
   // Corporate
   static const CORPORATE_DASHBOARD = '/corporate-dashboard';
   static const EMPLOYEE_MANAGEMENT = '/employee-management';
   static const BUDGET_MANAGEMENT = '/budget-management';
   static const APPROVAL_QUEUE = '/approval-queue';
   static const RIDE_POLICY = '/ride-policy';
+  static const ROUTE_MANAGEMENT = '/route-management';
   // Corporate booking flow
   static const CORPORATE_BOOKING_CONFIRM = '/corporate-booking-confirm';
   static const APPROVAL_PENDING = '/approval-pending';

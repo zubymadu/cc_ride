@@ -23,9 +23,16 @@ class WalletReportApiModel {
         this.responseMsg,
     });
 
+    // Backend (legacyWalletReport) actually sends "wallet_balance" (a number)
+    // and "WalletData" (with fields id/amount/balance/description/type/date/
+    // reference) — this model previously read "wallet"/"Walletitem", which
+    // don't exist in the real response, so the balance and transaction list
+    // silently stayed null/empty forever even though User.walletBalance was
+    // correct in the database (and correctly visible from the admin panel,
+    // which reads that same column directly).
     factory WalletReportApiModel.fromJson(Map<String, dynamic> json) => WalletReportApiModel(
-        walletitem: json["Walletitem"] == null ? [] : List<Walletitem>.from(json["Walletitem"]!.map((x) => Walletitem.fromJson(x))),
-        wallet: json["wallet"],
+        walletitem: json["WalletData"] == null ? [] : List<Walletitem>.from(json["WalletData"]!.map((x) => Walletitem.fromJson(x))),
+        wallet: json["wallet_balance"]?.toString() ?? json["wallet"],
         responseCode: json["ResponseCode"],
         result: json["Result"],
         responseMsg: json["ResponseMsg"],
@@ -51,10 +58,21 @@ class Walletitem {
         this.amt,
     });
 
+    // Maps the real backend transaction shape (description/type/amount) onto
+    // this model's existing field names so the view (which reads
+    // item.status/message/amt) needs no changes. `type` is 'credit'/'debit'
+    // lowercase from the backend — the view compares status == "Credit".
+    // `amount` can be signed (negative for debits); the view already
+    // prepends its own +/- based on status, so amt is stored as an
+    // unsigned magnitude to avoid a double negative sign on debits.
     factory Walletitem.fromJson(Map<String, dynamic> json) => Walletitem(
-        message: json["message"],
-        status: json["status"],
-        amt: json["amt"],
+        message: json["description"]?.toString() ?? json["message"],
+        status: json["type"] != null
+            ? (json["type"] == "credit" ? "Credit" : "Debit")
+            : json["status"],
+        amt: json["amount"] != null
+            ? (json["amount"] as num).abs().toString()
+            : json["amt"],
     );
 
     Map<String, dynamic> toJson() => {

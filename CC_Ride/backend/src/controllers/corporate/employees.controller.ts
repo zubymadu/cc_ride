@@ -4,7 +4,8 @@ import { prisma } from '../../lib/prisma'
 import { ok, fail, serverError } from '../../lib/response'
 import { dec } from '../../lib/naira'
 import crypto from 'crypto'
-import nodemailer from 'nodemailer'
+import { sendMail } from '../../lib/mail'
+import { resolveRequiredIdentity } from '../../lib/identity'
 
 // ─── GET /corporate/employee/profile ─────────────────────────────────────────
 
@@ -58,6 +59,10 @@ export async function getEmployeeProfile(req: Request, res: Response) {
       job_title:           membership.jobTitle ?? '',
       monthly_spend_limit: dec(membership.monthlySpendLimit),
       monthly_spent:       dec(spentThisMonth._sum.amount),
+      // Gates the "own-car driver" operating mode in the app — set by this
+      // company's own admin via /corporate/employees/:id/approve-personal-vehicle.
+      personal_vehicle_approved: membership.personalVehicleApproved,
+      is_driver:           req.user.isDriver ?? false,
       cost_centres:        costCentres.map((c) => ({
         id:   c.id.toString(),
         name: c.name,
@@ -110,7 +115,9 @@ export async function listEmployees(req: Request, res: Response) {
 
 export async function listDepartments(req: Request, res: Response) {
   try {
-    const companyId = req.companyId ?? (req.query.company_id as string)
+    // requireCompanyMember guarantees req.companyId before this handler
+    // runs — assert rather than falling back to a client-supplied value.
+    const companyId = req.companyId!
 
     const depts = await prisma.department.findMany({
       where:   { companyId, isActive: true },
@@ -130,11 +137,18 @@ export async function listDepartments(req: Request, res: Response) {
 // ─── POST /corporate/employees/invite ────────────────────────────────────────
 
 const InviteSchema = z.object({
-  company_id:    z.string().uuid(),
-  name:          z.string().min(2),
-  email:         z.string().email(),
-  department_id: z.string().optional(),
-  role:          z.enum(['employee', 'manager', 'company_admin', 'company_finance', 'company_hr']).default('employee'),
+  company_id:      z.string().uuid(),
+  name:            z.string().min(2),
+  // The employer's correspondence address — used to send the invite, never
+  // used to look up or create a User. See registerCompanyEmployee (the web
+  // console's equivalent) for why: a person's work email having no
+  // relationship to their personal signup email is the normal case.
+  email:           z.string().email(),
+  mobile:          z.string().min(7),
+  nin:             z.string().optional(),
+  passport_number: z.string().optional(),
+  department_id:   z.string().optional(),
+  role:            z.enum(['employee', 'manager', 'company_admin', 'company_finance', 'company_hr']).default('employee'),
 })
 
 export async function inviteEmployee(req: Request, res: Response) {
@@ -142,25 +156,39 @@ export async function inviteEmployee(req: Request, res: Response) {
     const data       = InviteSchema.parse(req.body)
     const companyId  = req.companyId!
 
-    // Check if user exists
-    let user = await prisma.user.findFirst({
-      where: { email: data.email },
-    })
+    const identity = resolveRequiredIdentity(data.nin, data.passport_number)
+    if (!identity.ok) { fail(res, identity.error); return }
 
-    // Create stub user if email not registered yet
+    // NIN/passport is the reliable match — email/mobile can each
+    // legitimately differ between someone's personal account and what
+    // their employer has on file.
+    let user = await prisma.user.findFirst({
+      where: identity.nin ? { nin: identity.nin } : { passportNumber: identity.passportNumber! },
+    })
+    if (!user) user = await prisma.user.findFirst({ where: { mobile: data.mobile } })
+
+    // Create stub user if genuinely new
     if (!user) {
       const tempPassword = crypto.randomBytes(16).toString('hex')
       const bcrypt = await import('bcryptjs')
       user = await prisma.user.create({
         data: {
-          name:         data.name,
-          email:        data.email,
-          mobile:       '',
-          countryCode:  '+234',
-          passwordHash: await bcrypt.hash(tempPassword, 12),
-          status:       'pending_verification',
-          referralCode: crypto.randomBytes(4).toString('hex').toUpperCase(),
+          name:           data.name,
+          mobile:         data.mobile,
+          countryCode:    '+234',
+          nin:            identity.nin,
+          passportNumber: identity.passportNumber,
+          passwordHash:   await bcrypt.hash(tempPassword, 12),
+          status:         'pending_verification',
+          referralCode:   crypto.randomBytes(4).toString('hex').toUpperCase(),
         },
+      })
+    } else if (!user.nin && !user.passportNumber) {
+      // Found by mobile, but the identity document wasn't on file yet —
+      // backfill it now that we've actually been given one.
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: { nin: identity.nin, passportNumber: identity.passportNumber },
       })
     }
 
@@ -197,7 +225,13 @@ export async function inviteEmployee(req: Request, res: Response) {
     _sendInviteEmail(data.email, data.name, companyId).catch(console.error)
 
     ok(res, { user_id: user.id }, 'Invitation sent successfully')
-  } catch (err) {
+  } catch (err: any) {
+    if (err?.code === 'P2002') {
+      const field = err?.meta?.target?.[0]
+      if (field === 'nin') { fail(res, 'A different account already exists with this NIN'); return }
+      if (field === 'passport_number') { fail(res, 'A different account already exists with this passport number'); return }
+      fail(res, 'A user with this mobile number already exists'); return
+    }
     serverError(res, err)
   }
 }
@@ -228,21 +262,11 @@ export async function deactivateEmployee(req: Request, res: Response) {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 async function _sendInviteEmail(email: string, name: string, companyId: string) {
-  if (!process.env.SMTP_HOST) return
+  const company = await prisma.company.findUnique({ where: { id: companyId }, select: { name: true } })
 
-  const settings = await prisma.platformSettings.findUnique({ where: { id: 1 } })
-  const company  = await prisma.company.findUnique({ where: { id: companyId }, select: { name: true } })
-
-  const transporter = nodemailer.createTransport({
-    host:   process.env.SMTP_HOST,
-    port:   Number(process.env.SMTP_PORT ?? 587),
-    auth:   { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-  })
-
-  await transporter.sendMail({
-    from:    `"${settings?.appName ?? 'CC Ride'}" <${process.env.SMTP_FROM ?? 'noreply@ccride.ng'}>`,
-    to:      email,
-    subject: `You've been invited to ${company?.name ?? 'a company'} on CC Ride`,
-    html:    `<p>Hi ${name},</p><p>You have been added to ${company?.name} on CC Ride. Download the app to get started.</p>`,
-  })
+  await sendMail(
+    email,
+    `You've been invited to ${company?.name ?? 'a company'} on CC Ride`,
+    `<p>Hi ${name},</p><p>You have been added to ${company?.name} on CC Ride. Download the app to get started.</p>`,
+  )
 }

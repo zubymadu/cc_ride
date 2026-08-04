@@ -91,7 +91,7 @@ enum DocumentStatus {
 enum PayoutStatus {
   pending
   processing
-  paid        // alias for completed; retained for controller compatibility
+  paid // alias for completed; retained for controller compatibility
   completed
   failed
   reversed
@@ -110,7 +110,7 @@ enum PayoutMethod {
 enum PaymentGateway {
   paystack
   flutterwave
-  company_account  // corporate rides charged to company budget
+  company_account // corporate rides charged to company budget
 
   @@map("payment_gateway")
 }
@@ -155,7 +155,7 @@ enum CompanyStatus {
   suspended
   pending_approval
   inactive
-  rejected          // company application rejected by super-admin
+  rejected // company application rejected by super-admin
 
   @@map("company_status")
 }
@@ -213,16 +213,26 @@ model AdminUser {
   id           BigInt    @id @default(autoincrement())
   username     String    @unique
   email        String    @unique
-  passwordHash String    @map("password_hash")
+  // Nullable — an invited-but-not-yet-claimed company admin has no
+  // credentials until they follow their invite link and set one.
+  passwordHash String?   @map("password_hash")
   isSuperAdmin Boolean   @default(false) @map("is_super_admin")
-  isActive     Boolean   @default(true)  @map("is_active")
+  isActive     Boolean   @default(true) @map("is_active")
   lastLoginAt  DateTime? @map("last_login_at")
   createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt      @map("updated_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
 
   // Scope — null = platform super-admin; set = company/branch admin
-  scopeCompanyId String? @db.Uuid @map("scope_company_id")
+  scopeCompanyId String? @map("scope_company_id") @db.Uuid
   scopeBranchId  BigInt? @map("scope_branch_id")
+
+  // Invite/claim flow — set when a company is approved (or a branch admin
+  // is provisioned) and cleared once the invite is claimed. A null
+  // inviteToken with a null passwordHash should never happen outside the
+  // brief create-then-invite window; the claim endpoint is what clears both
+  // together.
+  inviteToken     String?   @unique @map("invite_token")
+  inviteExpiresAt DateTime? @map("invite_expires_at")
 
   // Relations
   reviewedDocuments  DriverDocument[]
@@ -231,15 +241,23 @@ model AdminUser {
   generatedInvoices  Invoice[]
   companyCredits     CompanyCredit[]
   branchCredits      BranchCredit[]
-  scopeCompany       Company?       @relation("CompanyAdmins", fields: [scopeCompanyId], references: [id])
-  scopeBranch        CompanyBranch? @relation("BranchAdmins", fields: [scopeBranchId], references: [id])
+  scopeCompany       Company?         @relation("CompanyAdmins", fields: [scopeCompanyId], references: [id])
+  scopeBranch        CompanyBranch?   @relation("BranchAdmins", fields: [scopeBranchId], references: [id])
+
+  // Pricing & savings reporting
+  createdRateCards        PricingRateCard[]
+  rateCardChanges         PricingFactorChangeLog[]
+  enteredBenchmarks       MarketBenchmarkRate[]
+  generatedSavingsReports CorporateSavingsReport[]
+  createdPoolSharingAgreements PoolSharingAgreement[]
+  decidedAccessRequests   EmployeeAccessRequest[]
 
   @@map("admin_users")
 }
 
 /// Global platform configuration — always a single row (id = 1).
 model PlatformSettings {
-  id   Int @id @default(1)
+  id Int @id @default(1)
 
   // Branding
   appName    String  @default("CC Ride") @map("app_name")
@@ -251,16 +269,33 @@ model PlatformSettings {
   currencySymbol String @default("₦") @map("currency_symbol")
 
   // Finance
-  platformCommission    Decimal @default(15.00) @db.Decimal(5, 2)  @map("platform_commission")
-  bookingFee            Decimal @default(100.00) @db.Decimal(15, 2) @map("booking_fee")
-  minPayoutAmount       Decimal @default(5000.00) @db.Decimal(15, 2) @map("min_payout_amount")
-  driverPayoutThreshold Decimal @default(5000.00) @db.Decimal(15, 2) @map("driver_payout_threshold")
-  referralBonus         Decimal @default(500.00) @db.Decimal(15, 2)  @map("referral_bonus")
-  signupBonus           Decimal @default(0.00) @db.Decimal(15, 2)    @map("signup_bonus")
+  platformCommission    Decimal @default(15.00) @map("platform_commission") @db.Decimal(5, 2)
+  bookingFee            Decimal @default(100.00) @map("booking_fee") @db.Decimal(15, 2)
+  minPayoutAmount       Decimal @default(5000.00) @map("min_payout_amount") @db.Decimal(15, 2)
+  driverPayoutThreshold Decimal @default(5000.00) @map("driver_payout_threshold") @db.Decimal(15, 2)
+  referralBonus         Decimal @default(500.00) @map("referral_bonus") @db.Decimal(15, 2)
+  signupBonus           Decimal @default(0.00) @map("signup_bonus") @db.Decimal(15, 2)
+  // Flat points credited per completed trip for corporate pool drivers
+  // (companyId-owned vehicle), instead of cash — not tied to fare.
+  pointsPerTrip         Int     @default(10) @map("points_per_trip")
 
   // Ride rules
-  maxCancellationMinutes Int     @default(5)   @map("max_cancellation_minutes")
-  surgeMultiplierMax     Decimal @default(2.5) @db.Decimal(5, 2) @map("surge_multiplier_max")
+  maxCancellationMinutes Int     @default(5) @map("max_cancellation_minutes")
+  surgeMultiplierMax     Decimal @default(2.5) @map("surge_multiplier_max") @db.Decimal(5, 2)
+
+  // Pricing model — driver_set: driver freely sets the fare when posting a
+  // ride (the long-standing default). platform_computed: the platform
+  // computes a fare from base_fare/fare_per_km/fare_per_min below (or a
+  // more specific PricingRateCard override, same resolution order as
+  // everywhere else in the engine) for NON-shared/ad-hoc rides — shown to
+  // the driver as a suggested price and to the passenger as the expected
+  // fare before booking. Shared/carpool routes stay driver-set either way;
+  // splitting a route's already-fixed cost among riders isn't something a
+  // per-km formula applies to.
+  pricingModel        PricingModel @default(driver_set) @map("pricing_model")
+  defaultBaseFare      Decimal     @default(500.00) @map("default_base_fare") @db.Decimal(15, 2)
+  defaultFarePerKm     Decimal     @default(150.00) @map("default_fare_per_km") @db.Decimal(15, 2)
+  defaultFarePerMin    Decimal     @default(10.00)  @map("default_fare_per_min") @db.Decimal(15, 2)
 
   // App mode
   maintenanceMode Boolean @default(false) @map("maintenance_mode")
@@ -270,8 +305,8 @@ model PlatformSettings {
   supportPhone String? @map("support_phone")
 
   // Paystack
-  paystackPublicKey  String? @map("paystack_public_key")
-  paystackSecretKey  String? @map("paystack_secret_key")
+  paystackPublicKey String? @map("paystack_public_key")
+  paystackSecretKey String? @map("paystack_secret_key")
 
   // Flutterwave
   flutterwavePublicKey String? @map("flutterwave_public_key")
@@ -283,7 +318,7 @@ model PlatformSettings {
   googleMapsKeyMasked String? @map("google_maps_key_masked")
 
   // Firebase / Push
-  fcmServerKey    String? @map("fcm_server_key")
+  fcmServerKey      String? @map("fcm_server_key")
   firebaseProjectId String? @map("firebase_project_id")
 
   // OneSignal (alternative push)
@@ -328,42 +363,66 @@ model ApiRateLimit {
 // =============================================================================
 
 model User {
-  id               String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name             String
-  email            String?    @unique
-  mobile           String
-  countryCode      String     @default("+234") @map("country_code")
-  passwordHash     String     @map("password_hash")
-  profilePicUrl    String?    @map("profile_pic_url")
-  dateOfBirth      DateTime?  @db.Date @map("date_of_birth")
-  bio              String?
-  walletBalance    Decimal    @default(0.00) @db.Decimal(15, 2) @map("wallet_balance")
-  isMobileVerified Boolean    @default(false) @map("is_mobile_verified")
-  isEmailVerified  Boolean    @default(false) @map("is_email_verified")
-  isDriver         Boolean    @default(false) @map("is_driver")
-  status           UserStatus @default(pending_verification)
-  referralCode     String?    @unique @map("referral_code")
-  referredById     String?    @db.Uuid @map("referred_by")
-  fcmToken         String?    @map("fcm_token")
-  createdAt        DateTime   @default(now()) @map("created_at")
-  updatedAt        DateTime   @updatedAt      @map("updated_at")
-  lastActiveAt     DateTime?  @map("last_active_at")
+  id                String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name              String
+  email             String?    @unique
+  mobile            String
+  countryCode       String     @default("+234") @map("country_code")
+  // Government identity anchor — never mobile, which a person can
+  // legitimately have more than one of (a personal number and a separate
+  // employer-issued one). Exactly one of these two applies to any person,
+  // never both: NIN for a Nigerian, passport number otherwise. Optional
+  // for an ordinary passenger; required (one or the other) for a driver or
+  // a corporate employee, enforced at the registration endpoints rather
+  // than a DB constraint, since the same column serves all three.
+  nin               String?    @unique
+  passportNumber    String?    @unique @map("passport_number")
+  passwordHash      String     @map("password_hash")
+  profilePicUrl     String?    @map("profile_pic_url")
+  dateOfBirth       DateTime?  @map("date_of_birth") @db.Date
+  bio               String?
+  walletBalance     Decimal    @default(0.00) @map("wallet_balance") @db.Decimal(15, 2)
+  isMobileVerified  Boolean    @default(false) @map("is_mobile_verified")
+  isEmailVerified   Boolean    @default(false) @map("is_email_verified")
+  emailOtpCode      String?    @map("email_otp_code")
+  emailOtpExpiresAt DateTime?  @map("email_otp_expires_at")
+  isDriver          Boolean    @default(false) @map("is_driver")
+  status            UserStatus @default(pending_verification)
+  referralCode      String?    @unique @map("referral_code")
+  referredById      String?    @map("referred_by") @db.Uuid
+  fcmToken          String?    @map("fcm_token")
+  createdAt         DateTime   @default(now()) @map("created_at")
+  updatedAt         DateTime   @updatedAt @map("updated_at")
+  lastActiveAt      DateTime?  @map("last_active_at")
+
+  // First-access invite (e.g. an org admin registering an employee) — the
+  // account is created with an unguessable random passwordHash the user
+  // never sees; this token is what actually gates setting a real password,
+  // so passwordHash never needs to become nullable here (unlike AdminUser,
+  // this table is touched by far more of the legacy codebase — safer to
+  // keep it always-populated and gate access via the token instead).
+  inviteToken     String?   @unique @map("invite_token")
+  inviteExpiresAt DateTime? @map("invite_expires_at")
 
   // Self-referential
   referredBy    User?  @relation("UserReferrals", fields: [referredById], references: [id])
   referredUsers User[] @relation("UserReferrals")
 
   // Driver
-  driverProfile DriverProfile?
-  ridesAsDriver Ride[]  @relation("RideDriver")
-  vehicles      Vehicle[]
-  bankAccounts   DriverBankAccount[]
-  payoutRequests PayoutRequest[]
+  driverProfile          DriverProfile?
+  ridesAsDriver          Ride[]                    @relation("RideDriver")
+  vehicles               Vehicle[]
+  bankAccounts           DriverBankAccount[]
+  payoutRequests         PayoutRequest[]
+  poolVehicleAccess      DriverVehicleAccess[]
+  pointsTransactions     DriverPointsTransaction[]
+  routeSchedulesAsDriver RouteSchedule[]
+  rideWaitlistEntries    RideWaitlist[]
 
   // Passenger
-  bookings      Booking[]      @relation("BookingPassenger")
-  bookingsAsDriver Booking[]   @relation("BookingDriver")
-  rideRequests  RideRequest[]
+  bookings         Booking[]     @relation("BookingPassenger")
+  bookingsAsDriver Booking[]     @relation("BookingDriver")
+  rideRequests     RideRequest[]
 
   // Finance
   walletTransactions WalletTransaction[]
@@ -374,13 +433,13 @@ model User {
   driverRatingsReceived DriverRating[] @relation("RatingDriver")
 
   // Other
-  notifications Notification[]
+  notifications  Notification[]
   supportTickets SupportTicket[]
 
   // Corporate
   companyMemberships CompanyEmployee[]
-  createdBudgets     Budget[]           @relation("BudgetCreator")
-  createdPolicies    RidePolicy[]       @relation("PolicyCreator")
+  createdBudgets     Budget[]          @relation("BudgetCreator")
+  createdPolicies    RidePolicy[]      @relation("PolicyCreator")
 
   approvalWorkflowsAsApprover   ApprovalWorkflow[] @relation("WorkflowApprover")
   approvalWorkflowsAsEscalation ApprovalWorkflow[] @relation("WorkflowEscalation")
@@ -397,23 +456,26 @@ model User {
 }
 
 model DriverProfile {
-  userId        String       @id @db.Uuid @map("user_id")
+  userId        String       @id @map("user_id") @db.Uuid
   licenseNumber String       @map("license_number")
-  licenseExpiry DateTime     @db.Date @map("license_expiry")
+  licenseExpiry DateTime     @map("license_expiry") @db.Date
   nin           String?
   bvn           String?
   status        DriverStatus @default(pending)
-  averageRating Decimal      @default(0.00) @db.Decimal(3, 2) @map("average_rating")
-  totalTrips    Int          @default(0)    @map("total_trips")
-  totalEarnings Decimal      @default(0.00) @db.Decimal(15, 2) @map("total_earnings")
+  averageRating Decimal      @default(0.00) @map("average_rating") @db.Decimal(3, 2)
+  totalTrips    Int          @default(0) @map("total_trips")
+  totalEarnings Decimal      @default(0.00) @map("total_earnings") @db.Decimal(15, 2)
+  // Corporate pool driver points — informational only, orgs manage rewards
+  // for this at their own discretion; not redeemable in-app.
+  pointsBalance Int          @default(0) @map("points_balance")
 
   // Current location (updated via Socket.IO)
-  currentLocationLat Decimal? @db.Decimal(10, 7) @map("current_location_lat")
-  currentLocationLng Decimal? @db.Decimal(10, 7) @map("current_location_lng")
+  currentLocationLat Decimal?  @map("current_location_lat") @db.Decimal(10, 7)
+  currentLocationLng Decimal?  @map("current_location_lng") @db.Decimal(10, 7)
   lastLocationAt     DateTime? @map("last_location_at")
 
   createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt      @map("updated_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   // Relations
   user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -424,19 +486,19 @@ model DriverProfile {
 
 model DriverDocument {
   id            BigInt         @id @default(autoincrement())
-  driverId      String         @db.Uuid @map("driver_id")
+  driverId      String         @map("driver_id") @db.Uuid
   documentType  String         @map("document_type")
   fileUrl       String         @map("file_url")
   status        DocumentStatus @default(pending)
   rejectionNote String?        @map("rejection_note")
-  expiresAt     DateTime?      @db.Date @map("expires_at")
+  expiresAt     DateTime?      @map("expires_at") @db.Date
   reviewedById  BigInt?        @map("reviewed_by")
   reviewedAt    DateTime?      @map("reviewed_at")
   createdAt     DateTime       @default(now()) @map("created_at")
 
   // Relations
-  driver     DriverProfile  @relation(fields: [driverId], references: [userId], onDelete: Cascade)
-  reviewedBy AdminUser?     @relation(fields: [reviewedById], references: [id])
+  driver     DriverProfile @relation(fields: [driverId], references: [userId], onDelete: Cascade)
+  reviewedBy AdminUser?    @relation(fields: [reviewedById], references: [id])
 
   @@map("driver_documents")
 }
@@ -444,18 +506,18 @@ model DriverDocument {
 /// Driver bank accounts — separate model so a driver can have multiple accounts
 /// and payouts can include { bankAccount { bankName, accountNumber } }.
 model DriverBankAccount {
-  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  driverId              String    @db.Uuid @map("driver_id")
-  bankName              String    @map("bank_name")
-  bankCode              String?   @map("bank_code")   // e.g. '058' for GTBank — required for Flutterwave transfers
-  accountNumber         String    @map("account_number")
-  accountName           String    @map("account_name")
-  paystackRecipientCode String?   @map("paystack_recipient_code")
-  isPrimary             Boolean   @default(true) @map("is_primary")
-  createdAt             DateTime  @default(now()) @map("created_at")
+  id                    String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  driverId              String   @map("driver_id") @db.Uuid
+  bankName              String   @map("bank_name")
+  bankCode              String?  @map("bank_code") // e.g. '058' for GTBank — required for Flutterwave transfers
+  accountNumber         String   @map("account_number")
+  accountName           String   @map("account_name")
+  paystackRecipientCode String?  @map("paystack_recipient_code")
+  isPrimary             Boolean  @default(true) @map("is_primary")
+  createdAt             DateTime @default(now()) @map("created_at")
 
-  driver   User            @relation(fields: [driverId], references: [id], onDelete: Cascade)
-  payouts  PayoutRequest[]
+  driver  User            @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  payouts PayoutRequest[]
 
   @@unique([driverId, accountNumber])
   @@map("driver_bank_accounts")
@@ -470,8 +532,10 @@ model VehicleType {
   title  String  @unique
   status Boolean @default(true)
 
-  vehicles    Vehicle[]
-  policies    RidePolicy[]
+  vehicles       Vehicle[]
+  policies       RidePolicy[]
+  rateCards      PricingRateCard[]
+  benchmarkRates MarketBenchmarkRate[]
 
   @@map("vehicle_types")
 }
@@ -498,24 +562,38 @@ model VehicleColor {
 
 model Vehicle {
   id           BigInt        @id @default(autoincrement())
-  driverId     String        @db.Uuid @map("driver_id")
+  // Nullable: a pool vehicle (companyId set) isn't owned by any one driver —
+  // who's currently driving it is tracked separately via DriverVehicleAccess.
+  driverId     String?       @map("driver_id") @db.Uuid
+  // Non-null ⇒ this is an organisation-owned pool vehicle rather than a
+  // personal vehicle. A vehicle is exactly one or the other, never both.
+  companyId    String?       @map("company_id") @db.Uuid
+  // Which branch of the owning company operates this pool vehicle — only
+  // meaningful when companyId is set. Nullable so existing/company-level
+  // pool vehicles keep working unchanged; branch-scoped sharing agreements
+  // (see PoolSharingAgreement) only apply to vehicles that have this set.
+  branchId     BigInt?       @map("branch_id")
   modelId      BigInt        @map("model_id")
   typeId       BigInt        @map("type_id")
   colorId      BigInt        @map("color_id")
   year         Int           @db.SmallInt
   licensePlate String        @unique @map("license_plate")
   photoUrl     String?       @map("photo_url")
-  seatCapacity Int           @default(4) @db.SmallInt @map("seat_capacity")
+  seatCapacity Int           @default(4) @map("seat_capacity") @db.SmallInt
   status       VehicleStatus @default(pending)
   createdAt    DateTime      @default(now()) @map("created_at")
-  updatedAt    DateTime      @updatedAt      @map("updated_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
 
   // Relations
-  driver User         @relation(fields: [driverId], references: [id], onDelete: Cascade)
-  model  VehicleModel @relation(fields: [modelId],  references: [id])
-  type   VehicleType  @relation(fields: [typeId], references: [id])
-  color  VehicleColor @relation(fields: [colorId], references: [id])
-  rides  Ride[]
+  driver             User?                 @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  company            Company?              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  branch             CompanyBranch?        @relation(fields: [branchId], references: [id])
+  model              VehicleModel          @relation(fields: [modelId], references: [id])
+  type               VehicleType           @relation(fields: [typeId], references: [id])
+  color              VehicleColor          @relation(fields: [colorId], references: [id])
+  rides              Ride[]
+  driverAccessGrants DriverVehicleAccess[]
+  routeSchedules     RouteSchedule[]
 
   @@map("vehicles")
 }
@@ -525,33 +603,49 @@ model Vehicle {
 // =============================================================================
 
 model Ride {
-  id                   String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  driverId             String           @db.Uuid @map("driver_id")
-  vehicleId            BigInt?          @map("vehicle_id")
+  id           String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  driverId     String  @map("driver_id") @db.Uuid
+  vehicleId    BigInt? @map("vehicle_id")
+  // Set when this ride is a lazily-generated occurrence of a fixed Route's
+  // schedule (see Route below) — null for ordinary ad-hoc rides.
+  routeId      String? @map("route_id") @db.Uuid
+  // Set when this ride is a lazily-generated daily occurrence of an ad-hoc
+  // recurring_daily ride the driver originally posted — null for the
+  // original template ride and for ordinary one_time rides. Mirrors the
+  // Route/routeId materialization pattern below, just without a separate
+  // template model since an ad-hoc recurring ride's own row already serves
+  // as the template.
+  parentRideId String? @map("parent_ride_id") @db.Uuid
 
   // Route
   originAddress      String  @map("origin_address")
-  originLat          Decimal @db.Decimal(10, 7) @map("origin_lat")
-  originLng          Decimal @db.Decimal(10, 7) @map("origin_lng")
+  originLat          Decimal @map("origin_lat") @db.Decimal(10, 7)
+  originLng          Decimal @map("origin_lng") @db.Decimal(10, 7)
   destinationAddress String  @map("destination_address")
-  destinationLat     Decimal @db.Decimal(10, 7) @map("destination_lat")
-  destinationLng     Decimal @db.Decimal(10, 7) @map("destination_lng")
+  destinationLat     Decimal @map("destination_lat") @db.Decimal(10, 7)
+  destinationLng     Decimal @map("destination_lng") @db.Decimal(10, 7)
 
   // Schedule
   scheduleType RideScheduleType @default(one_time) @map("schedule_type")
   scheduledAt  DateTime         @map("scheduled_at")
 
   // Pricing (NGN)
-  baseFare            Decimal  @db.Decimal(15, 2) @map("base_fare")
-  farePerKm           Decimal? @db.Decimal(15, 2) @map("fare_per_km")
-  estimatedDistanceKm Decimal? @db.Decimal(8, 2)  @map("estimated_distance_km")
-  estimatedDurationMin Int?    @map("estimated_duration_min")
+  baseFare             Decimal  @map("base_fare") @db.Decimal(15, 2)
+  farePerKm            Decimal? @map("fare_per_km") @db.Decimal(15, 2)
+  estimatedDistanceKm  Decimal? @map("estimated_distance_km") @db.Decimal(8, 2)
+  estimatedDurationMin Int?     @map("estimated_duration_min")
 
   // Capacity & preferences
-  availableSeats Int      @db.SmallInt @map("available_seats")
+  availableSeats Int      @map("available_seats") @db.SmallInt
   luggageAllowed String   @default("M") @map("luggage_allowed")
   restrictions   String[] @default([])
   tripNotes      String?  @map("trip_notes")
+  // "Auto" bookings confirm and take a seat immediately (existing behaviour).
+  // "Manual" bookings sit as a pending Booking until the driver explicitly
+  // confirms or declines — the Flutter app has sent this as book_preference
+  // on every post_trip.php call from the start, but until now nothing on the
+  // backend ever read or acted on it.
+  bookPreference String   @default("Auto") @map("book_preference")
 
   // Status & OTPs
   status     RideStatus @default(pending)
@@ -564,25 +658,32 @@ model Ride {
   cancelledAt        DateTime? @map("cancelled_at")
   cancellationReason String?   @map("cancellation_reason")
   createdAt          DateTime  @default(now()) @map("created_at")
-  updatedAt          DateTime  @updatedAt      @map("updated_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
 
   // Relations
-  driver  User     @relation("RideDriver", fields: [driverId], references: [id])
-  vehicle Vehicle? @relation(fields: [vehicleId], references: [id])
-  stops    RideStop[]
-  tracking RideTracking[]
-  bookings Booking[]
+  driver             User           @relation("RideDriver", fields: [driverId], references: [id])
+  vehicle            Vehicle?       @relation(fields: [vehicleId], references: [id])
+  route              Route?         @relation(fields: [routeId], references: [id])
+  parentRide         Ride?          @relation("RideRecurrence", fields: [parentRideId], references: [id])
+  recurringInstances Ride[]         @relation("RideRecurrence")
+  stops              RideStop[]
+  tracking           RideTracking[]
+  bookings           Booking[]
+  waitlist           RideWaitlist[]
+  matchedRequests    RideRequest[]
 
   @@index([driverId])
   @@index([status])
   @@index([scheduledAt])
+  @@index([routeId, scheduledAt])
+  @@index([parentRideId, scheduledAt])
   @@map("rides")
 }
 
 model RideStop {
   id        BigInt  @id @default(autoincrement())
-  rideId    String  @db.Uuid @map("ride_id")
-  stopOrder Int     @db.SmallInt @map("stop_order")
+  rideId    String  @map("ride_id") @db.Uuid
+  stopOrder Int     @map("stop_order") @db.SmallInt
   address   String
   lat       Decimal @db.Decimal(10, 7)
   lng       Decimal @db.Decimal(10, 7)
@@ -592,13 +693,109 @@ model RideStop {
   @@map("ride_stops")
 }
 
+// =============================================================================
+// FIXED ROUTES — "Find Shared Route"
+//
+// A Route is a template (code, name, ordered stops, one or more recurring
+// schedules). It never gets booked directly — at search time, legacyFindTrip
+// lazily materializes an ordinary Ride (tagged with routeId) for whichever of
+// a Route's schedules fall on the requested date, so the rest of the booking
+// flow (RideStop, Booking, legacyBookSeat, the whole Flutter booking chain)
+// works unchanged. Seat inventory is exhausted, then RideWaitlist kicks in.
+// =============================================================================
+
+model Route {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code            String   @unique
+  name            String
+  companyId       String?  @map("company_id") @db.Uuid // null = platform-wide route
+  originName      String   @map("origin_name")
+  originLat       Decimal  @map("origin_lat") @db.Decimal(10, 7)
+  originLng       Decimal  @map("origin_lng") @db.Decimal(10, 7)
+  destinationName String   @map("destination_name")
+  destinationLat  Decimal  @map("destination_lat") @db.Decimal(10, 7)
+  destinationLng  Decimal  @map("destination_lng") @db.Decimal(10, 7)
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  company   Company?        @relation(fields: [companyId], references: [id])
+  stops     RouteStop[]
+  schedules RouteSchedule[]
+  rides     Ride[]
+
+  @@index([companyId])
+  @@map("routes")
+}
+
+model RouteStop {
+  id        BigInt  @id @default(autoincrement())
+  routeId   String  @map("route_id") @db.Uuid
+  stopOrder Int     @map("stop_order") @db.SmallInt
+  name      String
+  lat       Decimal @db.Decimal(10, 7)
+  lng       Decimal @db.Decimal(10, 7)
+
+  route           Route     @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  pickupBookings  Booking[] @relation("BookingPickupStop")
+  dropoffBookings Booking[] @relation("BookingDropoffStop")
+
+  @@map("route_stops")
+}
+
+model RouteSchedule {
+  id             BigInt  @id @default(autoincrement())
+  routeId        String  @map("route_id") @db.Uuid
+  departureTime  String  @map("departure_time") // "06:15", 24h
+  daysOfWeek     Int[]   @map("days_of_week") // 0=Sun .. 6=Sat
+  driverId       String? @map("driver_id") @db.Uuid // assigned pool driver
+  vehicleId      BigInt? @map("vehicle_id") // assigned pool vehicle
+  seatCapacity   Int     @map("seat_capacity") @db.SmallInt
+  fare           Decimal @db.Decimal(15, 2)
+  isActive       Boolean @default(true) @map("is_active")
+  // Propagated onto each materialized Ride (see materializeRouteRidesForDate)
+  // — lets a driver opt a specific published route into requiring manual
+  // approval instead of every booking auto-confirming.
+  bookPreference String  @default("Auto") @map("book_preference")
+
+  route   Route    @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  driver  User?    @relation(fields: [driverId], references: [id])
+  vehicle Vehicle? @relation(fields: [vehicleId], references: [id])
+
+  @@index([routeId])
+  @@map("route_schedules")
+}
+
+model RideWaitlist {
+  id             BigInt         @id @default(autoincrement())
+  rideId         String         @map("ride_id") @db.Uuid
+  userId         String         @map("user_id") @db.Uuid
+  seatsRequested Int            @map("seats_requested") @db.SmallInt
+  status         WaitlistStatus @default(waiting)
+  createdAt      DateTime       @default(now()) @map("created_at")
+  promotedAt     DateTime?      @map("promoted_at")
+
+  ride Ride @relation(fields: [rideId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([rideId, createdAt])
+  @@map("ride_waitlist")
+}
+
+enum WaitlistStatus {
+  waiting
+  promoted
+  expired
+
+  @@map("waitlist_status")
+}
+
 model RideTracking {
   id         BigInt   @id @default(autoincrement())
-  rideId     String   @db.Uuid @map("ride_id")
-  driverId   String   @db.Uuid @map("driver_id")
+  rideId     String   @map("ride_id") @db.Uuid
+  driverId   String   @map("driver_id") @db.Uuid
   lat        Decimal  @db.Decimal(10, 7)
   lng        Decimal  @db.Decimal(10, 7)
-  speedKmh   Decimal? @db.Decimal(6, 2) @map("speed_kmh")
+  speedKmh   Decimal? @map("speed_kmh") @db.Decimal(6, 2)
   recordedAt DateTime @default(now()) @map("recorded_at")
 
   ride Ride @relation(fields: [rideId], references: [id], onDelete: Cascade)
@@ -609,13 +806,13 @@ model RideTracking {
 
 model Booking {
   id          String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  rideId      String  @db.Uuid @map("ride_id")
-  passengerId String  @db.Uuid @map("passenger_id")
+  rideId      String  @map("ride_id") @db.Uuid
+  passengerId String  @map("passenger_id") @db.Uuid
   // Denormalised driver FK — mirrors ride.driverId for direct queries
-  driverId    String? @db.Uuid @map("driver_id")
+  driverId    String? @map("driver_id") @db.Uuid
 
   // Corporate (nullable — personal bookings leave these null)
-  companyId         String? @db.Uuid @map("company_id")
+  companyId         String? @map("company_id") @db.Uuid
   branchId          BigInt? @map("branch_id")
   departmentId      BigInt? @map("department_id")
   costCentreId      BigInt? @map("cost_centre_id")
@@ -623,16 +820,20 @@ model Booking {
   approvalRequestId BigInt? @map("approval_request_id")
 
   // Seats
-  seatsBooked Int @default(1) @db.SmallInt @map("seats_booked")
+  seatsBooked Int @default(1) @map("seats_booked") @db.SmallInt
+
+  // Only meaningful when the underlying ride is route-based (ride.routeId set)
+  pickupStopId  BigInt? @map("pickup_stop_id")
+  dropoffStopId BigInt? @map("dropoff_stop_id")
 
   // Fares (NGN)
   subtotal           Decimal @db.Decimal(15, 2)
-  couponDiscount     Decimal @default(0.00) @db.Decimal(15, 2) @map("coupon_discount")
-  walletAmountUsed   Decimal @default(0.00) @db.Decimal(15, 2) @map("wallet_amount_used")
-  totalAmount        Decimal @db.Decimal(15, 2) @map("total_amount")
-  driverEarning      Decimal @db.Decimal(15, 2) @map("driver_earning")
-  platformCommission Decimal @db.Decimal(15, 2) @map("platform_commission")
-  bookingFee         Decimal @default(0.00) @db.Decimal(15, 2) @map("booking_fee")
+  couponDiscount     Decimal @default(0.00) @map("coupon_discount") @db.Decimal(15, 2)
+  walletAmountUsed   Decimal @default(0.00) @map("wallet_amount_used") @db.Decimal(15, 2)
+  totalAmount        Decimal @map("total_amount") @db.Decimal(15, 2)
+  driverEarning      Decimal @map("driver_earning") @db.Decimal(15, 2)
+  platformCommission Decimal @map("platform_commission") @db.Decimal(15, 2)
+  bookingFee         Decimal @default(0.00) @map("booking_fee") @db.Decimal(15, 2)
 
   // Payment
   paymentGateway   PaymentGateway? @map("payment_gateway")
@@ -640,9 +841,9 @@ model Booking {
   paymentStatus    PaymentStatus   @default(pending) @map("payment_status")
 
   // Method & rating
-  bookingMethod    BookingMethod @default(instant) @map("booking_method")
-  passengerRating  Int?          @db.SmallInt @map("passenger_rating")
-  passengerReview  String?       @map("passenger_review")
+  bookingMethod   BookingMethod @default(instant) @map("booking_method")
+  passengerRating Int?          @map("passenger_rating") @db.SmallInt
+  passengerReview String?       @map("passenger_review")
 
   // Status
   status BookingStatus @default(pending)
@@ -654,23 +855,28 @@ model Booking {
   cancelledAt        DateTime? @map("cancelled_at")
   cancellationReason String?   @map("cancellation_reason")
   createdAt          DateTime  @default(now()) @map("created_at")
-  updatedAt          DateTime  @updatedAt      @map("updated_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
 
   // Relations
-  ride            Ride              @relation(fields: [rideId], references: [id])
-  passenger       User              @relation("BookingPassenger", fields: [passengerId], references: [id])
-  driver          User?             @relation("BookingDriver", fields: [driverId], references: [id])
-  company         Company?          @relation(fields: [companyId], references: [id])
-  branch          CompanyBranch?    @relation(fields: [branchId], references: [id])
-  department      Department?       @relation(fields: [departmentId], references: [id])
-  costCentre       CostCentre?       @relation(fields: [costCentreId], references: [id])
-  approvalRequests ApprovalRequest[] // back-relation: find via prisma.approvalRequest.findFirst({ where: { bookingId } })
-  receipt          RideReceipt?
+  ride               Ride                      @relation(fields: [rideId], references: [id])
+  passenger          User                      @relation("BookingPassenger", fields: [passengerId], references: [id])
+  driver             User?                     @relation("BookingDriver", fields: [driverId], references: [id])
+  company            Company?                  @relation(fields: [companyId], references: [id])
+  branch             CompanyBranch?            @relation(fields: [branchId], references: [id])
+  department         Department?               @relation(fields: [departmentId], references: [id])
+  costCentre         CostCentre?               @relation(fields: [costCentreId], references: [id])
+  pickupStop         RouteStop?                @relation("BookingPickupStop", fields: [pickupStopId], references: [id])
+  dropoffStop        RouteStop?                @relation("BookingDropoffStop", fields: [dropoffStopId], references: [id])
+  approvalRequests   ApprovalRequest[] // back-relation: find via prisma.approvalRequest.findFirst({ where: { bookingId } })
+  receipt            RideReceipt?
   driverRating       DriverRating?
   budgetTransactions BudgetTransaction[]
   couponRedemption   CouponRedemption?
   walletTransactions WalletTransaction[]
   supportTickets     SupportTicket[]
+  pointsTransactions DriverPointsTransaction[]
+  savingsRecord      RideSavingsRecord?
+  walletDebits       CompanyCredit[]
 
   @@index([passengerId])
   @@index([driverId])
@@ -684,20 +890,27 @@ model Booking {
 
 model RideRequest {
   id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  passengerId        String   @db.Uuid @map("passenger_id")
+  passengerId        String   @map("passenger_id") @db.Uuid
   originAddress      String   @map("origin_address")
-  originLat          Decimal  @db.Decimal(10, 7) @map("origin_lat")
-  originLng          Decimal  @db.Decimal(10, 7) @map("origin_lng")
+  originLat          Decimal  @map("origin_lat") @db.Decimal(10, 7)
+  originLng          Decimal  @map("origin_lng") @db.Decimal(10, 7)
   destinationAddress String   @map("destination_address")
-  destinationLat     Decimal  @db.Decimal(10, 7) @map("destination_lat")
-  destinationLng     Decimal  @db.Decimal(10, 7) @map("destination_lng")
-  departureDate      DateTime @db.Date @map("departure_date")
-  seatsRequired      Int      @default(1) @db.SmallInt @map("seats_required")
+  destinationLat     Decimal  @map("destination_lat") @db.Decimal(10, 7)
+  destinationLng     Decimal  @map("destination_lng") @db.Decimal(10, 7)
+  departureDate      DateTime @map("departure_date") @db.Date
+  seatsRequired      Int      @default(1) @map("seats_required") @db.SmallInt
   notes              String?
   isActive           Boolean  @default(true) @map("is_active")
   createdAt          DateTime @default(now()) @map("created_at")
 
-  passenger User @relation(fields: [passengerId], references: [id])
+  // Set when a driver commits to a route/trip that fulfils this request
+  // (see legacyPostTrip) — the request stays isActive (still needs the
+  // passenger's action) until they explicitly confirm or decline the
+  // match, rather than auto-closing the moment a driver shows interest.
+  matchedRideId String? @map("matched_ride_id") @db.Uuid
+
+  passenger   User  @relation(fields: [passengerId], references: [id])
+  matchedRide Ride? @relation(fields: [matchedRideId], references: [id])
 
   @@index([isActive, departureDate])
   @@map("ride_requests")
@@ -709,10 +922,10 @@ model RideRequest {
 
 model WalletTransaction {
   id           BigInt   @id @default(autoincrement())
-  userId       String   @db.Uuid @map("user_id")
-  bookingId    String?  @db.Uuid @map("booking_id")
-  amount       Decimal  @db.Decimal(15, 2)  // positive = credit, negative = debit
-  balanceAfter Decimal  @db.Decimal(15, 2) @map("balance_after")
+  userId       String   @map("user_id") @db.Uuid
+  bookingId    String?  @map("booking_id") @db.Uuid
+  amount       Decimal  @db.Decimal(15, 2) // positive = credit, negative = debit
+  balanceAfter Decimal  @map("balance_after") @db.Decimal(15, 2)
   description  String
   reference    String?  @unique
   createdAt    DateTime @default(now()) @map("created_at")
@@ -725,11 +938,51 @@ model WalletTransaction {
   @@map("wallet_transactions")
 }
 
+/// Points ledger for corporate pool drivers — informational only, no
+/// in-app redemption. Participating organisations use this at their own
+/// discretion to reward pool drivers; mirrors WalletTransaction's shape.
+model DriverPointsTransaction {
+  id           BigInt   @id @default(autoincrement())
+  driverId     String   @map("driver_id") @db.Uuid
+  bookingId    String?  @map("booking_id") @db.Uuid
+  points       Int // positive = credit, negative = adjustment
+  balanceAfter Int      @map("balance_after")
+  description  String
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  driver  User     @relation(fields: [driverId], references: [id])
+  booking Booking? @relation(fields: [bookingId], references: [id])
+
+  @@index([driverId, createdAt(sort: Desc)])
+  @@index([bookingId])
+  @@map("driver_points_transactions")
+}
+
+/// Grants a driver access to drive a specific organisation pool vehicle.
+/// A driver may hold grants to zero, one, or several pool vehicles; they
+/// pick which one they're using at the start of each trip (pool car
+/// availability can change trip to trip).
+model DriverVehicleAccess {
+  id        BigInt    @id @default(autoincrement())
+  vehicleId BigInt    @map("vehicle_id")
+  driverId  String    @map("driver_id") @db.Uuid
+  isActive  Boolean   @default(true) @map("is_active")
+  grantedAt DateTime  @default(now()) @map("granted_at")
+  revokedAt DateTime? @map("revoked_at")
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  driver  User    @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  @@unique([vehicleId, driverId])
+  @@index([driverId, isActive])
+  @@map("driver_vehicle_access")
+}
+
 /// Driver payout requests — referenced as `prisma.payoutRequest` in controllers.
 model PayoutRequest {
   id               String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  driverId         String       @db.Uuid @map("driver_id")
-  bankAccountId    String?      @db.Uuid @map("bank_account_id")
+  driverId         String       @map("driver_id") @db.Uuid
+  bankAccountId    String?      @map("bank_account_id") @db.Uuid
   amount           Decimal      @db.Decimal(15, 2)
   method           PayoutMethod @default(paystack)
   status           PayoutStatus @default(pending)
@@ -757,8 +1010,8 @@ model Coupon {
   subtitle      String?
   description   String?
   expiresAt     DateTime @map("expires_at")
-  minAmount     Decimal  @default(0.00) @db.Decimal(15, 2) @map("min_amount")
-  discountValue Decimal  @db.Decimal(15, 2) @map("discount_value")
+  minAmount     Decimal  @default(0.00) @map("min_amount") @db.Decimal(15, 2)
+  discountValue Decimal  @map("discount_value") @db.Decimal(15, 2)
   isPercentage  Boolean  @default(false) @map("is_percentage")
   maxUses       Int?     @map("max_uses")
   usesCount     Int      @default(0) @map("uses_count")
@@ -773,8 +1026,8 @@ model Coupon {
 model CouponRedemption {
   id         BigInt   @id @default(autoincrement())
   couponId   BigInt   @map("coupon_id")
-  userId     String   @db.Uuid @map("user_id")
-  bookingId  String?  @unique @db.Uuid @map("booking_id")   // one redemption per booking
+  userId     String   @map("user_id") @db.Uuid
+  bookingId  String?  @unique @map("booking_id") @db.Uuid // one redemption per booking
   redeemedAt DateTime @default(now()) @map("redeemed_at")
 
   coupon  Coupon   @relation(fields: [couponId], references: [id])
@@ -791,9 +1044,9 @@ model CouponRedemption {
 
 model DriverRating {
   id          BigInt   @id @default(autoincrement())
-  bookingId   String   @unique @db.Uuid @map("booking_id")
-  driverId    String   @db.Uuid @map("driver_id")
-  passengerId String   @db.Uuid @map("passenger_id")
+  bookingId   String   @unique @map("booking_id") @db.Uuid
+  driverId    String   @map("driver_id") @db.Uuid
+  passengerId String   @map("passenger_id") @db.Uuid
   rating      Int      @db.SmallInt
   review      String?
   createdAt   DateTime @default(now()) @map("created_at")
@@ -811,21 +1064,21 @@ model DriverRating {
 
 model SupportTicket {
   id          String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId      String         @db.Uuid @map("user_id")
-  bookingId   String?        @db.Uuid @map("booking_id")
+  userId      String         @map("user_id") @db.Uuid
+  bookingId   String?        @map("booking_id") @db.Uuid
   subject     String
   description String
-  category    String?        // e.g. "payment", "driver", "app", "general"
+  category    String? // e.g. "payment", "driver", "app", "general"
   status      TicketStatus   @default(open)
   priority    TicketPriority @default(medium)
   assignedTo  BigInt?        @map("assigned_to")
   resolvedAt  DateTime?      @map("resolved_at")
   createdAt   DateTime       @default(now()) @map("created_at")
-  updatedAt   DateTime       @updatedAt      @map("updated_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
 
-  user     User           @relation(fields: [userId], references: [id])
-  booking  Booking?       @relation(fields: [bookingId], references: [id])
-  assignee AdminUser?     @relation(fields: [assignedTo], references: [id])
+  user     User             @relation(fields: [userId], references: [id])
+  booking  Booking?         @relation(fields: [bookingId], references: [id])
+  assignee AdminUser?       @relation(fields: [assignedTo], references: [id])
   messages SupportMessage[]
 
   @@index([status, priority])
@@ -834,10 +1087,10 @@ model SupportTicket {
 
 model SupportMessage {
   id         BigInt   @id @default(autoincrement())
-  ticketId   String   @db.Uuid @map("ticket_id")
+  ticketId   String   @map("ticket_id") @db.Uuid
   // Flexible sender: user, admin, or system
-  senderType String   @default("user") @map("sender_type")  // 'user' | 'admin' | 'system'
-  senderId   String?  @map("sender_id")                     // userId or adminId as string
+  senderType String   @default("user") @map("sender_type") // 'user' | 'admin' | 'system'
+  senderId   String?  @map("sender_id") // userId or adminId as string
   body       String
   createdAt  DateTime @default(now()) @map("created_at")
 
@@ -852,7 +1105,7 @@ model SupportMessage {
 
 model Notification {
   id     BigInt           @id @default(autoincrement())
-  userId String           @db.Uuid @map("user_id")
+  userId String           @map("user_id") @db.Uuid
   type   NotificationType
   title  String
   body   String
@@ -898,36 +1151,36 @@ model ContentPage {
 // =============================================================================
 
 model Company {
-  id                 String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name               String
-  registrationNumber String?       @unique @map("registration_number")
-  taxId              String?       @map("tax_id")
-  industry           String?
-  logoUrl            String?       @map("logo_url")
-  address            String?
-  city               String?
-  state              String        @default("Lagos")
-  contactName        String        @map("contact_name")
-  contactEmail       String        @unique @map("contact_email")
-  contactPhone       String?       @map("contact_phone")  // optional — some companies register without phone
-  status             CompanyStatus @default(pending_approval)
+  id                    String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                  String
+  registrationNumber    String?       @unique @map("registration_number")
+  taxId                 String?       @map("tax_id")
+  industry              String?
+  logoUrl               String?       @map("logo_url")
+  address               String?
+  city                  String?
+  state                 String        @default("Lagos")
+  contactName           String        @map("contact_name")
+  contactEmail          String        @unique @map("contact_email")
+  contactPhone          String?       @map("contact_phone") // optional — some companies register without phone
+  status                CompanyStatus @default(pending_approval)
   // Subscription
-  monthlySubscription   Decimal  @default(50000.00) @db.Decimal(15, 2) @map("monthly_subscription")
-  subscriptionActive    Boolean  @default(false) @map("subscription_active")
-  subscriptionExpiresAt DateTime? @map("subscription_expires_at")
+  monthlySubscription   Decimal       @default(50000.00) @map("monthly_subscription") @db.Decimal(15, 2)
+  subscriptionActive    Boolean       @default(false) @map("subscription_active")
+  subscriptionExpiresAt DateTime?     @map("subscription_expires_at")
   // Commission override (null = use platform default)
-  commissionRate     Decimal?  @db.Decimal(5, 2) @map("commission_rate")
+  commissionRate        Decimal?      @map("commission_rate") @db.Decimal(5, 2)
   // Prepaid wallet (credited by admin for direct payments)
-  walletBalance Decimal @default(0.00) @db.Decimal(15, 2) @map("wallet_balance")
+  walletBalance         Decimal       @default(0.00) @map("wallet_balance") @db.Decimal(15, 2)
 
   // Meta
-  onboardedById BigInt?   @map("onboarded_by")
+  onboardedById BigInt?  @map("onboarded_by")
   notes         String?
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt      @map("updated_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
 
   // Relations
-  onboardedBy       AdminUser?         @relation(fields: [onboardedById], references: [id])
+  onboardedBy       AdminUser?               @relation(fields: [onboardedById], references: [id])
   departments       Department[]
   costCentres       CostCentre[]
   employees         CompanyEmployee[]
@@ -940,17 +1193,77 @@ model Company {
   creditLedger      CompanyCredit[]
   regions           CompanyRegion[]
   branches          CompanyBranch[]
-  adminUsers        AdminUser[]        @relation("CompanyAdmins")
+  adminUsers        AdminUser[]              @relation("CompanyAdmins")
+  poolVehicles      Vehicle[]
+  routes            Route[]
+  rateCards         PricingRateCard[]
+  savingsRecords    RideSavingsRecord[]
+  savingsReports    CorporateSavingsReport[]
+  poolPolicy        CompanyPoolPolicy?
+  poolSharesOffered PoolSharingAgreement[]   @relation("PoolSharesOffered")
+  poolSharesReceived PoolSharingAgreement[]  @relation("PoolSharesReceived")
+  accessRequests    EmployeeAccessRequest[]
 
   @@map("companies")
 }
 
+// One row per company — governs whether Company A's own pool fleet can be
+// booked by another participating organisation's employees, and the
+// company-wide default usage ration per employee. Company A's pool cars
+// only ever serve Company A's own employees unless BOTH allowExternalSharing
+// is on AND a PoolSharingAgreement explicitly names the requesting company —
+// exclusivity is the default, sharing is opt-in on two levels deliberately.
+model CompanyPoolPolicy {
+  id                   BigInt   @id @default(autoincrement())
+  companyId            String   @unique @map("company_id") @db.Uuid
+  allowExternalSharing Boolean  @default(false) @map("allow_external_sharing")
+  // Company-wide default ration per employee — null means unlimited. A
+  // specific employee's own override on CompanyEmployee (poolDailyLimit
+  // etc.) takes precedence over these when set.
+  dailyLimit           Int?     @map("daily_limit")
+  weeklyLimit          Int?     @map("weekly_limit")
+  monthlyLimit         Int?     @map("monthly_limit")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@map("company_pool_policies")
+}
+
+// One-directional: companyId is opening ITS OWN pool fleet to
+// partnerCompanyId's employees. Not assumed to be reciprocal — Company A
+// sharing with Company B doesn't imply B is sharing back, since a company
+// may not even operate its own pool fleet.
+model PoolSharingAgreement {
+  id               BigInt   @id @default(autoincrement())
+  companyId        String   @map("company_id") @db.Uuid
+  // Nullable: applies to ALL of companyId's branches (the original,
+  // company-wide behaviour) when unset. Set to a specific branch to scope
+  // this agreement to only that branch's pool fleet — a Lagos branch can
+  // share with a partner while an Abuja branch of the same company shares
+  // with nobody, because it simply has no agreement naming it.
+  branchId         BigInt?  @map("branch_id")
+  partnerCompanyId String   @map("partner_company_id") @db.Uuid
+  isActive         Boolean  @default(true) @map("is_active")
+  createdAt        DateTime @default(now()) @map("created_at")
+  createdById      BigInt   @map("created_by_id")
+
+  company        Company        @relation("PoolSharesOffered", fields: [companyId], references: [id], onDelete: Cascade)
+  branch         CompanyBranch? @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  partnerCompany Company        @relation("PoolSharesReceived", fields: [partnerCompanyId], references: [id], onDelete: Cascade)
+  createdBy      AdminUser      @relation(fields: [createdById], references: [id])
+
+  @@unique([companyId, branchId, partnerCompanyId])
+  @@map("pool_sharing_agreements")
+}
+
 model CompanyRegion {
   id        BigInt   @id @default(autoincrement())
-  companyId String   @db.Uuid @map("company_id")
-  name      String                   // e.g. "South-West Zone", "North Central"
-  code      String?                  // e.g. "SW", "NC"
-  isActive  Boolean  @default(true)  @map("is_active")
+  companyId String   @map("company_id") @db.Uuid
+  name      String // e.g. "South-West Zone", "North Central"
+  code      String? // e.g. "SW", "NC"
+  isActive  Boolean  @default(true) @map("is_active")
   createdAt DateTime @default(now()) @map("created_at")
 
   company  Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
@@ -961,36 +1274,38 @@ model CompanyRegion {
 }
 
 model CompanyBranch {
-  id           BigInt   @id @default(autoincrement())
-  companyId    String   @db.Uuid @map("company_id")
-  regionId     BigInt?  @map("region_id")
-  name         String                   // e.g. "Victoria Island Branch"
-  code         String?                  // unique shortcode per company
-  address      String?
-  city         String?
-  state        String   @default("Lagos")
-  contactName  String?  @map("contact_name")
-  contactPhone String?  @map("contact_phone")
-  contactEmail String?  @map("contact_email")
-  isHeadquarters Boolean @default(false) @map("is_headquarters")
-  isActive     Boolean  @default(true)   @map("is_active")
+  id               BigInt   @id @default(autoincrement())
+  companyId        String   @map("company_id") @db.Uuid
+  regionId         BigInt?  @map("region_id")
+  name             String // e.g. "Victoria Island Branch"
+  code             String? // unique shortcode per company
+  address          String?
+  city             String?
+  state            String   @default("Lagos")
+  contactName      String?  @map("contact_name")
+  contactPhone     String?  @map("contact_phone")
+  contactEmail     String?  @map("contact_email")
+  isHeadquarters   Boolean  @default(false) @map("is_headquarters")
+  isActive         Boolean  @default(true) @map("is_active")
   // Optional independent billing wallet
-  walletBalance Decimal @default(0.00) @db.Decimal(15, 2) @map("wallet_balance")
+  walletBalance    Decimal  @default(0.00) @map("wallet_balance") @db.Decimal(15, 2)
   // Optional independent billing flag
-  billedSeparately Boolean @default(false) @map("billed_separately")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt      @map("updated_at")
+  billedSeparately Boolean  @default(false) @map("billed_separately")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
 
-  company   Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  region    CompanyRegion? @relation(fields: [regionId], references: [id])
-  employees CompanyEmployee[]
-  bookings  Booking[]
-  budgets   Budget[]
-  ridePolicies     RidePolicy[]
+  company           Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  region            CompanyRegion?     @relation(fields: [regionId], references: [id])
+  employees         CompanyEmployee[]
+  bookings          Booking[]
+  budgets           Budget[]
+  ridePolicies      RidePolicy[]
   approvalWorkflows ApprovalWorkflow[]
-  invoices  Invoice[]
-  adminUsers AdminUser[]  @relation("BranchAdmins")
-  creditLedger BranchCredit[]
+  invoices          Invoice[]
+  adminUsers        AdminUser[]        @relation("BranchAdmins")
+  creditLedger      BranchCredit[]
+  vehicles          Vehicle[]
+  poolSharingAgreements PoolSharingAgreement[]
 
   @@unique([companyId, code])
   @@index([companyId, regionId])
@@ -998,15 +1313,15 @@ model CompanyBranch {
 }
 
 model BranchCredit {
-  id           BigInt   @id @default(autoincrement())
-  branchId     BigInt   @map("branch_id")
-  amount       Decimal  @db.Decimal(15, 2)
-  balanceAfter Decimal  @db.Decimal(15, 2) @map("balance_after")
-  paymentMethod String  @map("payment_method")
-  reference    String?
-  note         String?
-  creditedById BigInt   @map("credited_by")
-  createdAt    DateTime @default(now()) @map("created_at")
+  id            BigInt   @id @default(autoincrement())
+  branchId      BigInt   @map("branch_id")
+  amount        Decimal  @db.Decimal(15, 2)
+  balanceAfter  Decimal  @map("balance_after") @db.Decimal(15, 2)
+  paymentMethod String   @map("payment_method")
+  reference     String?
+  note          String?
+  creditedById  BigInt   @map("credited_by")
+  createdAt     DateTime @default(now()) @map("created_at")
 
   branch     CompanyBranch @relation(fields: [branchId], references: [id])
   creditedBy AdminUser     @relation(fields: [creditedById], references: [id])
@@ -1016,18 +1331,23 @@ model BranchCredit {
 }
 
 model CompanyCredit {
-  id           BigInt   @id @default(autoincrement())
-  companyId    String   @db.Uuid @map("company_id")
-  amount       Decimal  @db.Decimal(15, 2)           // positive = credit, negative = debit
-  balanceAfter Decimal  @db.Decimal(15, 2) @map("balance_after")
-  paymentMethod String  @map("payment_method")       // e.g. "bank_transfer", "cash", "cheque"
-  reference    String?                                // payment ref / cheque number
-  note         String?
-  creditedById BigInt   @map("credited_by")
-  createdAt    DateTime @default(now()) @map("created_at")
+  id            BigInt   @id @default(autoincrement())
+  companyId     String   @map("company_id") @db.Uuid
+  amount        Decimal  @db.Decimal(15, 2) // positive = credit, negative = debit
+  balanceAfter  Decimal  @map("balance_after") @db.Decimal(15, 2)
+  paymentMethod String   @map("payment_method") // e.g. "bank_transfer", "cash", "cheque", "ride_payment"
+  reference     String? // payment ref / cheque number
+  note          String?
+  // Nullable — an admin-initiated top-up always has one, but a ride-payment
+  // debit is system-generated at booking time and traces back to the
+  // booking itself instead (bookingId).
+  creditedById  BigInt?  @map("credited_by")
+  bookingId     String?  @map("booking_id") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at")
 
   company    Company   @relation(fields: [companyId], references: [id])
-  creditedBy AdminUser @relation(fields: [creditedById], references: [id])
+  creditedBy AdminUser? @relation(fields: [creditedById], references: [id])
+  booking    Booking?  @relation(fields: [bookingId], references: [id])
 
   @@index([companyId, createdAt(sort: Desc)])
   @@map("company_credits")
@@ -1035,13 +1355,13 @@ model CompanyCredit {
 
 model Department {
   id        BigInt   @id @default(autoincrement())
-  companyId String   @db.Uuid @map("company_id")
+  companyId String   @map("company_id") @db.Uuid
   name      String
   code      String?
   isActive  Boolean  @default(true) @map("is_active")
   createdAt DateTime @default(now()) @map("created_at")
 
-  company           Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company           Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
   costCentres       CostCentre[]
   employees         CompanyEmployee[]
   bookings          Booking[]
@@ -1056,7 +1376,7 @@ model Department {
 
 model CostCentre {
   id           BigInt   @id @default(autoincrement())
-  companyId    String   @db.Uuid @map("company_id")
+  companyId    String   @map("company_id") @db.Uuid
   departmentId BigInt?  @map("department_id")
   name         String
   code         String
@@ -1064,8 +1384,8 @@ model CostCentre {
   isActive     Boolean  @default(true) @map("is_active")
   createdAt    DateTime @default(now()) @map("created_at")
 
-  company    Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  department Department? @relation(fields: [departmentId], references: [id])
+  company    Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  department Department?       @relation(fields: [departmentId], references: [id])
   employees  CompanyEmployee[]
   bookings   Booking[]
   budgets    Budget[]
@@ -1077,25 +1397,62 @@ model CostCentre {
 
 model CompanyEmployee {
   id                BigInt       @id @default(autoincrement())
-  companyId         String       @db.Uuid @map("company_id")
-  userId            String       @db.Uuid @map("user_id")
+  companyId         String       @map("company_id") @db.Uuid
+  userId            String       @map("user_id") @db.Uuid
   branchId          BigInt?      @map("branch_id")
   departmentId      BigInt?      @map("department_id")
   costCentreId      BigInt?      @map("cost_centre_id")
   role              EmployeeRole @default(employee)
   employeeNumber    String?      @map("employee_number")
   jobTitle          String?      @map("job_title")
-  monthlySpendLimit Decimal?     @db.Decimal(15, 2) @map("monthly_spend_limit")
+  // The employer's official correspondence address for this employment —
+  // deliberately separate from User.email, which is the person's own
+  // account/login identity and may be a personal address (or none at all).
+  // Registering someone by their work email must never create a duplicate,
+  // disconnected account for a person who already has a personal one.
+  workEmail         String?      @map("work_email")
+  monthlySpendLimit Decimal?     @map("monthly_spend_limit") @db.Decimal(15, 2)
   isActive          Boolean      @default(true) @map("is_active")
   invitedAt         DateTime     @default(now()) @map("invited_at")
   joinedAt          DateTime?    @map("joined_at")
   deactivatedAt     DateTime?    @map("deactivated_at")
 
-  company    Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  branch     CompanyBranch? @relation(fields: [branchId], references: [id])
-  department Department?    @relation(fields: [departmentId], references: [id])
-  costCentre CostCentre?    @relation(fields: [costCentreId], references: [id])
+  // Whether this employee's own personal vehicle has been approved by their
+  // organisation to be driven for cash earnings ("own-car driver" mode).
+  // Separate from pool-car access (DriverVehicleAccess) — an employee may
+  // have either, both, or neither.
+  personalVehicleApproved Boolean @default(false) @map("personal_vehicle_approved")
+
+  // Riding (not driving) the company's pool fleet — off by default, an
+  // admin explicitly selects which employees may book a pool car at all.
+  // Ration overrides null = fall back to CompanyPoolPolicy's company-wide
+  // default for that period; both null = unlimited.
+  poolAccessEnabled Boolean @default(false) @map("pool_access_enabled")
+  poolDailyLimit    Int?    @map("pool_daily_limit")
+  poolWeeklyLimit   Int?    @map("pool_weekly_limit")
+  poolMonthlyLimit  Int?    @map("pool_monthly_limit")
+  // When this employee is allowed to use pool-car access at all — empty
+  // days + null times = no restriction (available whenever access itself
+  // is enabled). Same convention as PricingRateCard's time_window scope.
+  poolAccessDaysOfWeek Int[]   @default([]) @map("pool_access_days_of_week")
+  poolAccessTimeFrom   String? @map("pool_access_time_from")
+  poolAccessTimeTo     String? @map("pool_access_time_to")
+
+  // Paying for a ride out of the company's own funds rather than the
+  // employee's personal wallet/card — same off-by-default, admin-granted
+  // shape as pool access, including its own availability window.
+  walletAccessEnabled    Boolean @default(false) @map("wallet_access_enabled")
+  walletAccessDaysOfWeek Int[]   @default([]) @map("wallet_access_days_of_week")
+  walletAccessTimeFrom   String? @map("wallet_access_time_from")
+  walletAccessTimeTo     String? @map("wallet_access_time_to")
+
+  company        Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user           User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branch         CompanyBranch?          @relation(fields: [branchId], references: [id])
+  department     Department?             @relation(fields: [departmentId], references: [id])
+  costCentre     CostCentre?             @relation(fields: [costCentreId], references: [id])
+  savingsRecords RideSavingsRecord[]
+  accessRequests EmployeeAccessRequest[]
 
   @@unique([companyId, userId])
   @@index([companyId])
@@ -1104,25 +1461,65 @@ model CompanyEmployee {
   @@map("company_employees")
 }
 
+enum AccessRequestType {
+  pool_car
+  wallet_payment
+
+  @@map("access_request_type")
+}
+
+enum AccessRequestStatus {
+  pending
+  approved
+  denied
+
+  @@map("access_request_status")
+}
+
+// An employee-initiated ask for their company admin to grant pool-car or
+// company-wallet access — the admin can also grant either directly via the
+// CompanyEmployee toggles above without a request ever existing; this model
+// only tracks the ask/decide conversation, not the access itself.
+model EmployeeAccessRequest {
+  id          BigInt               @id @default(autoincrement())
+  companyId   String               @map("company_id") @db.Uuid
+  employeeId  BigInt               @map("employee_id")
+  requestType AccessRequestType    @map("request_type")
+  status      AccessRequestStatus  @default(pending)
+  note        String?
+  requestedAt DateTime             @default(now()) @map("requested_at")
+  decidedAt   DateTime?            @map("decided_at")
+  decidedById BigInt?              @map("decided_by_id")
+  decisionNote String?             @map("decision_note")
+
+  company   Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employee  CompanyEmployee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  decidedBy AdminUser?      @relation(fields: [decidedById], references: [id])
+
+  @@index([companyId, status])
+  @@index([employeeId])
+  @@map("employee_access_requests")
+}
+
 // =============================================================================
 // BUDGETS
 // =============================================================================
 
 model Budget {
   id              BigInt           @id @default(autoincrement())
-  companyId       String           @db.Uuid @map("company_id")
+  companyId       String           @map("company_id") @db.Uuid
   branchId        BigInt?          @map("branch_id")
   departmentId    BigInt?          @map("department_id")
   costCentreId    BigInt?          @map("cost_centre_id")
   periodType      BudgetPeriodType @default(monthly) @map("period_type")
-  periodStart     DateTime         @db.Date @map("period_start")
-  periodEnd       DateTime         @db.Date @map("period_end")
-  allocatedAmount Decimal          @db.Decimal(15, 2) @map("allocated_amount")
-  alertThreshold  Decimal          @default(80.00) @db.Decimal(5, 2) @map("alert_threshold")
+  periodStart     DateTime         @map("period_start") @db.Date
+  periodEnd       DateTime         @map("period_end") @db.Date
+  allocatedAmount Decimal          @map("allocated_amount") @db.Decimal(15, 2)
+  alertThreshold  Decimal          @default(80.00) @map("alert_threshold") @db.Decimal(5, 2)
   isActive        Boolean          @default(true) @map("is_active")
-  createdById     String           @db.Uuid @map("created_by")
+  createdById     String           @map("created_by") @db.Uuid
   createdAt       DateTime         @default(now()) @map("created_at")
-  updatedAt       DateTime         @updatedAt      @map("updated_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
 
   company      Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
   branch       CompanyBranch?      @relation(fields: [branchId], references: [id])
@@ -1138,8 +1535,8 @@ model Budget {
 model BudgetTransaction {
   id           BigInt   @id @default(autoincrement())
   budgetId     BigInt   @map("budget_id")
-  bookingId    String?  @db.Uuid @map("booking_id")
-  employeeId   String?  @db.Uuid @map("employee_id")
+  bookingId    String?  @map("booking_id") @db.Uuid
+  employeeId   String?  @map("employee_id") @db.Uuid
   amount       Decimal  @db.Decimal(15, 2)
   description  String
   transactedAt DateTime @default(now()) @map("transacted_at")
@@ -1156,19 +1553,19 @@ model BudgetTransaction {
 
 model ApprovalWorkflow {
   id                   BigInt       @id @default(autoincrement())
-  companyId            String       @db.Uuid @map("company_id")
+  companyId            String       @map("company_id") @db.Uuid
   branchId             BigInt?      @map("branch_id")
   departmentId         BigInt?      @map("department_id")
   name                 String
   requiresApproval     Boolean      @default(true) @map("requires_approval")
-  autoApproveBelow     Decimal?     @db.Decimal(15, 2) @map("auto_approve_below")
+  autoApproveBelow     Decimal?     @map("auto_approve_below") @db.Decimal(15, 2)
   approverRole         EmployeeRole @default(manager) @map("approver_role")
-  specificApproverId   String?      @db.Uuid @map("specific_approver_id")
+  specificApproverId   String?      @map("specific_approver_id") @db.Uuid
   escalationHours      Int          @default(2) @map("escalation_hours")
-  escalationApproverId String?      @db.Uuid @map("escalation_approver_id")
+  escalationApproverId String?      @map("escalation_approver_id") @db.Uuid
   isActive             Boolean      @default(true) @map("is_active")
   createdAt            DateTime     @default(now()) @map("created_at")
-  updatedAt            DateTime     @updatedAt      @map("updated_at")
+  updatedAt            DateTime     @updatedAt @map("updated_at")
 
   company            Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
   branch             CompanyBranch?    @relation(fields: [branchId], references: [id])
@@ -1183,28 +1580,28 @@ model ApprovalWorkflow {
 model ApprovalRequest {
   id                 BigInt         @id @default(autoincrement())
   workflowId         BigInt         @map("workflow_id")
-  bookingId          String         @db.Uuid @map("booking_id")
-  requesterId        String         @db.Uuid @map("requester_id")
-  approverId         String?        @db.Uuid @map("approver_id")
+  bookingId          String         @map("booking_id") @db.Uuid
+  requesterId        String         @map("requester_id") @db.Uuid
+  approverId         String?        @map("approver_id") @db.Uuid
   // Snapshot for approver display
   originAddress      String         @map("origin_address")
   destinationAddress String         @map("destination_address")
-  estimatedFare      Decimal        @db.Decimal(15, 2) @map("estimated_fare")
+  estimatedFare      Decimal        @map("estimated_fare") @db.Decimal(15, 2)
   scheduledAt        DateTime       @map("scheduled_at")
   // Decision
   status             ApprovalAction @default(pending)
   decisionNote       String?        @map("decision_note")
   decidedAt          DateTime?      @map("decided_at")
   // Escalation
-  escalatedAt   DateTime? @map("escalated_at")
-  escalatedToId String?   @db.Uuid @map("escalated_to")
+  escalatedAt        DateTime?      @map("escalated_at")
+  escalatedToId      String?        @map("escalated_to") @db.Uuid
   // Expiry
-  expiresAt DateTime @map("expires_at")
-  createdAt DateTime @default(now()) @map("created_at")
+  expiresAt          DateTime       @map("expires_at")
+  createdAt          DateTime       @default(now()) @map("created_at")
 
-  workflow  ApprovalWorkflow @relation(fields: [workflowId], references: [id])
-  booking   Booking          @relation(fields: [bookingId], references: [id])
-  requester User             @relation("ApprovalRequester", fields: [requesterId], references: [id])
+  workflow    ApprovalWorkflow @relation(fields: [workflowId], references: [id])
+  booking     Booking          @relation(fields: [bookingId], references: [id])
+  requester   User             @relation("ApprovalRequester", fields: [requesterId], references: [id])
   approver    User?            @relation("ApprovalDecider", fields: [approverId], references: [id])
   escalatedTo User?            @relation("ApprovalEscalation", fields: [escalatedToId], references: [id])
 
@@ -1218,24 +1615,24 @@ model ApprovalRequest {
 // =============================================================================
 
 model RidePolicy {
-  id                   BigInt   @id @default(autoincrement())
-  companyId            String   @db.Uuid @map("company_id")
-  branchId             BigInt?  @map("branch_id")
-  departmentId         BigInt?  @map("department_id")
-  name                 String
-  allowedDays          Int[]    @map("allowed_days")          // 1=Mon…7=Sun; empty = all days
-  allowedTimeFrom      String?  @map("allowed_time_from")     // "HH:MM" in Africa/Lagos
-  allowedTimeTo        String?  @map("allowed_time_to")
-  allowedVehicleTypeIds Int[]   @map("allowed_vehicle_types") // empty = any type
-  maxVehicleTypeId     BigInt?  @map("max_vehicle_type_id")
-  maxFarePerTrip       Decimal? @db.Decimal(15, 2) @map("max_fare_per_trip")
-  maxMonthlySpend      Decimal? @db.Decimal(15, 2) @map("max_monthly_spend")
-  advanceBookingMinutes Int?    @map("advance_booking_minutes")
-  extraRules           Json     @default("{}") @map("extra_rules")
-  isActive             Boolean  @default(true) @map("is_active")
-  createdById          String   @db.Uuid @map("created_by")
-  createdAt            DateTime @default(now()) @map("created_at")
-  updatedAt            DateTime @updatedAt      @map("updated_at")
+  id                    BigInt   @id @default(autoincrement())
+  companyId             String   @map("company_id") @db.Uuid
+  branchId              BigInt?  @map("branch_id")
+  departmentId          BigInt?  @map("department_id")
+  name                  String
+  allowedDays           Int[]    @map("allowed_days") // 1=Mon…7=Sun; empty = all days
+  allowedTimeFrom       String?  @map("allowed_time_from") // "HH:MM" in Africa/Lagos
+  allowedTimeTo         String?  @map("allowed_time_to")
+  allowedVehicleTypeIds Int[]    @map("allowed_vehicle_types") // empty = any type
+  maxVehicleTypeId      BigInt?  @map("max_vehicle_type_id")
+  maxFarePerTrip        Decimal? @map("max_fare_per_trip") @db.Decimal(15, 2)
+  maxMonthlySpend       Decimal? @map("max_monthly_spend") @db.Decimal(15, 2)
+  advanceBookingMinutes Int?     @map("advance_booking_minutes")
+  extraRules            Json     @default("{}") @map("extra_rules")
+  isActive              Boolean  @default(true) @map("is_active")
+  createdById           String   @map("created_by") @db.Uuid
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
 
   company        Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
   branch         CompanyBranch? @relation(fields: [branchId], references: [id])
@@ -1252,20 +1649,20 @@ model RidePolicy {
 
 model RideReceipt {
   id                 String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  bookingId          String          @unique @db.Uuid @map("booking_id")
-  companyId          String?         @db.Uuid @map("company_id")
-  employeeId         String          @db.Uuid @map("employee_id")
+  bookingId          String          @unique @map("booking_id") @db.Uuid
+  companyId          String?         @map("company_id") @db.Uuid
+  employeeId         String          @map("employee_id") @db.Uuid
   departmentId       BigInt?         @map("department_id")
   costCentreId       BigInt?         @map("cost_centre_id")
   // Amounts (NGN)
-  baseFare           Decimal         @db.Decimal(15, 2) @map("base_fare")
-  platformFee        Decimal         @db.Decimal(15, 2) @map("platform_fee")
+  baseFare           Decimal         @map("base_fare") @db.Decimal(15, 2)
+  platformFee        Decimal         @map("platform_fee") @db.Decimal(15, 2)
   discount           Decimal         @default(0.00) @db.Decimal(15, 2)
-  totalCharged       Decimal         @db.Decimal(15, 2) @map("total_charged")
+  totalCharged       Decimal         @map("total_charged") @db.Decimal(15, 2)
   // Trip
   originAddress      String          @map("origin_address")
   destinationAddress String          @map("destination_address")
-  distanceKm         Decimal?        @db.Decimal(8, 2) @map("distance_km")
+  distanceKm         Decimal?        @map("distance_km") @db.Decimal(8, 2)
   durationMinutes    Int?            @map("duration_minutes")
   rideStartedAt      DateTime?       @map("ride_started_at")
   rideCompletedAt    DateTime?       @map("ride_completed_at")
@@ -1277,11 +1674,11 @@ model RideReceipt {
   pdfUrl             String?         @map("pdf_url")
   issuedAt           DateTime        @default(now()) @map("issued_at")
 
-  booking      Booking          @relation(fields: [bookingId], references: [id])
-  company      Company?         @relation(fields: [companyId], references: [id])
-  employee     User             @relation(fields: [employeeId], references: [id])
-  department   Department?      @relation(fields: [departmentId], references: [id])
-  costCentre   CostCentre?      @relation(fields: [costCentreId], references: [id])
+  booking      Booking           @relation(fields: [bookingId], references: [id])
+  company      Company?          @relation(fields: [companyId], references: [id])
+  employee     User              @relation(fields: [employeeId], references: [id])
+  department   Department?       @relation(fields: [departmentId], references: [id])
+  costCentre   CostCentre?       @relation(fields: [costCentreId], references: [id])
   invoiceItems InvoiceLineItem[]
 
   @@index([companyId])
@@ -1289,30 +1686,30 @@ model RideReceipt {
 }
 
 model Invoice {
-  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  companyId        String   @db.Uuid @map("company_id")
-  branchId         BigInt?  @map("branch_id")   // null = company-level invoice
-  invoiceNumber    String   @unique @map("invoice_number")
-  periodStart      DateTime @db.Date @map("period_start")
-  periodEnd        DateTime @db.Date @map("period_end")
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId        String    @map("company_id") @db.Uuid
+  branchId         BigInt?   @map("branch_id") // null = company-level invoice
+  invoiceNumber    String    @unique @map("invoice_number")
+  periodStart      DateTime  @map("period_start") @db.Date
+  periodEnd        DateTime  @map("period_end") @db.Date
   // Amounts (NGN)
-  subtotal         Decimal  @db.Decimal(15, 2)
-  vatRate          Decimal  @default(7.50) @db.Decimal(5, 2) @map("vat_rate")
-  vatAmount        Decimal  @db.Decimal(15, 2) @map("vat_amount")
-  totalAmount      Decimal  @db.Decimal(15, 2) @map("total_amount")
+  subtotal         Decimal   @db.Decimal(15, 2)
+  vatRate          Decimal   @default(7.50) @map("vat_rate") @db.Decimal(5, 2)
+  vatAmount        Decimal   @map("vat_amount") @db.Decimal(15, 2)
+  totalAmount      Decimal   @map("total_amount") @db.Decimal(15, 2)
   // Status
-  isPaid           Boolean  @default(false) @map("is_paid")
+  isPaid           Boolean   @default(false) @map("is_paid")
   paidAt           DateTime? @map("paid_at")
-  paymentReference String?  @map("payment_reference")
-  dueDate          DateTime @db.Date @map("due_date")
-  pdfUrl           String?  @map("pdf_url")
+  paymentReference String?   @map("payment_reference")
+  dueDate          DateTime  @map("due_date") @db.Date
+  pdfUrl           String?   @map("pdf_url")
   notes            String?
-  generatedById    BigInt?  @map("generated_by")
-  createdAt        DateTime @default(now()) @map("created_at")
+  generatedById    BigInt?   @map("generated_by")
+  createdAt        DateTime  @default(now()) @map("created_at")
 
-  company     Company          @relation(fields: [companyId], references: [id])
-  branch      CompanyBranch?   @relation(fields: [branchId], references: [id])
-  generatedBy AdminUser?       @relation(fields: [generatedById], references: [id])
+  company     Company           @relation(fields: [companyId], references: [id])
+  branch      CompanyBranch?    @relation(fields: [branchId], references: [id])
+  generatedBy AdminUser?        @relation(fields: [generatedById], references: [id])
   lineItems   InvoiceLineItem[]
 
   @@index([companyId, periodStart])
@@ -1322,19 +1719,197 @@ model Invoice {
 
 model InvoiceLineItem {
   id             BigInt    @id @default(autoincrement())
-  invoiceId      String    @db.Uuid @map("invoice_id")
-  receiptId      String?   @db.Uuid @map("receipt_id")
+  invoiceId      String    @map("invoice_id") @db.Uuid
+  receiptId      String?   @map("receipt_id") @db.Uuid
   description    String
   departmentName String?   @map("department_name")
   costCentre     String?   @map("cost_centre")
   employeeName   String?   @map("employee_name")
   quantity       Int       @default(1)
-  unitPrice      Decimal   @db.Decimal(15, 2) @map("unit_price")
-  totalPrice     Decimal   @db.Decimal(15, 2) @map("total_price")
-  rideDate       DateTime? @db.Date @map("ride_date")
+  unitPrice      Decimal   @map("unit_price") @db.Decimal(15, 2)
+  totalPrice     Decimal   @map("total_price") @db.Decimal(15, 2)
+  rideDate       DateTime? @map("ride_date") @db.Date
 
   invoice Invoice      @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   receipt RideReceipt? @relation(fields: [receiptId], references: [id])
 
   @@map("invoice_line_items")
+}
+
+// =============================================================================
+// PRICING ENGINE
+//
+// Fares are never hard-coded — every ride resolves its rate by layering
+// PricingRateCard rows at lookup time: time_window > company > vehicle_type
+// > global, each layer overriding only the fields it sets. Rows are never
+// edited in place (see effectiveFrom/effectiveTo) so a ride already booked
+// keeps recomputing against the rate card that was live when it was booked,
+// not whatever a super-admin changes afterwards.
+// =============================================================================
+
+enum PricingScope {
+  global
+  vehicle_type
+  company
+  time_window
+
+  @@map("pricing_scope")
+}
+
+enum PricingModel {
+  driver_set
+  platform_computed
+
+  @@map("pricing_model")
+}
+
+model PricingRateCard {
+  id    BigInt       @id @default(autoincrement())
+  scope PricingScope @default(global)
+
+  // Set only when scope = vehicle_type
+  vehicleTypeId BigInt? @map("vehicle_type_id")
+  // Set only when scope = company (negotiated corporate rate)
+  companyId     String? @map("company_id") @db.Uuid
+  // Set only when scope = time_window — mirrors RidePolicy's day/time shape
+  daysOfWeek    Int[]   @default([]) @map("days_of_week") // 1=Mon..7=Sun; empty = every day
+  timeFrom      String? @map("time_from") // "HH:MM" in Africa/Lagos
+  timeTo        String? @map("time_to")
+
+  // Factors (NGN unless noted)
+  baseFare            Decimal? @map("base_fare") @db.Decimal(15, 2)
+  farePerKm           Decimal? @map("fare_per_km") @db.Decimal(15, 2)
+  farePerMin          Decimal? @map("fare_per_min") @db.Decimal(15, 2)
+  minFareFloor        Decimal? @map("min_fare_floor") @db.Decimal(15, 2)
+  driverEarningsFloor Decimal? @map("driver_earnings_floor") @db.Decimal(15, 2)
+  commissionRate      Decimal? @map("commission_rate") @db.Decimal(5, 2)
+  surgeMultiplier     Decimal? @map("surge_multiplier") @db.Decimal(5, 2)
+
+  // Versioning — rows are superseded, never edited in place
+  effectiveFrom DateTime  @default(now()) @map("effective_from")
+  effectiveTo   DateTime? @map("effective_to")
+  isActive      Boolean   @default(true) @map("is_active")
+
+  createdById BigInt   @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  vehicleType VehicleType?             @relation(fields: [vehicleTypeId], references: [id])
+  company     Company?                 @relation(fields: [companyId], references: [id])
+  createdBy   AdminUser                @relation(fields: [createdById], references: [id])
+  changeLog   PricingFactorChangeLog[]
+
+  @@index([scope, isActive])
+  @@index([vehicleTypeId, isActive])
+  @@index([companyId, isActive])
+  @@map("pricing_rate_cards")
+}
+
+/// Audit trail for every factor edit a super-admin makes — required so a
+/// disputed fare can be traced back to exactly who changed what and why.
+model PricingFactorChangeLog {
+  id           BigInt   @id @default(autoincrement())
+  rateCardId   BigInt   @map("rate_card_id")
+  fieldChanged String   @map("field_changed")
+  oldValue     String?  @map("old_value")
+  newValue     String?  @map("new_value")
+  reason       String?
+  changedById  BigInt   @map("changed_by")
+  changedAt    DateTime @default(now()) @map("changed_at")
+
+  rateCard  PricingRateCard @relation(fields: [rateCardId], references: [id], onDelete: Cascade)
+  changedBy AdminUser       @relation(fields: [changedById], references: [id])
+
+  @@index([rateCardId, changedAt(sort: Desc)])
+  @@map("pricing_factor_change_log")
+}
+
+/// Admin-entered samples of what competitors (Uber/Bolt/inDrive) charge on
+/// comparable trips — kept entirely separate from PricingRateCard so a
+/// savings report is never computed against CC Ride's own fare formula.
+model MarketBenchmarkRate {
+  id             BigInt   @id @default(autoincrement())
+  vehicleTypeId  BigInt?  @map("vehicle_type_id")
+  distanceBandKm String   @map("distance_band_km") // e.g. "0-5", "5-10", "10-20"
+  competitor     String? // "uber" | "bolt" | "indrive" | null = blended average
+  sampledFare    Decimal  @map("sampled_fare") @db.Decimal(15, 2)
+  sampledAt      DateTime @map("sampled_at")
+  source         String   @default("manual")
+  isActive       Boolean  @default(true) @map("is_active") // latest sample per band supersedes older ones
+  enteredById    BigInt   @map("entered_by")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  vehicleType VehicleType? @relation(fields: [vehicleTypeId], references: [id])
+  enteredBy   AdminUser    @relation(fields: [enteredById], references: [id])
+
+  @@index([distanceBandKm, isActive])
+  @@map("market_benchmark_rates")
+}
+
+// =============================================================================
+// CORPORATE SAVINGS & ANALYTICS
+//
+// Every corporate booking (pool or own-car) gets a shadow-priced record at
+// completion, purely for reporting — it never affects what's actually
+// charged. This is how a company sees "CC Ride saved you ₦X this month"
+// without that number ever touching the live fare calculation.
+// =============================================================================
+
+model RideSavingsRecord {
+  id         BigInt  @id @default(autoincrement())
+  bookingId  String  @unique @map("booking_id") @db.Uuid
+  companyId  String  @map("company_id") @db.Uuid
+  employeeId BigInt? @map("employee_id")
+
+  computedFairFare        Decimal  @map("computed_fair_fare") @db.Decimal(15, 2) // CC Ride's own formula output
+  computedMarketBenchmark Decimal? @map("computed_market_benchmark") @db.Decimal(15, 2) // looked up from MarketBenchmarkRate
+  actualOrgCost           Decimal  @map("actual_org_cost") @db.Decimal(15, 2) // this ride's amortized share of what the company actually paid
+  driverPointsAwarded     Int      @default(0) @map("driver_points_awarded")
+
+  distanceKm      Decimal? @map("distance_km") @db.Decimal(8, 2)
+  durationMinutes Int?     @map("duration_minutes")
+  rideDate        DateTime @map("ride_date") @db.Date
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  booking  Booking          @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  company  Company          @relation(fields: [companyId], references: [id])
+  employee CompanyEmployee? @relation(fields: [employeeId], references: [id])
+
+  @@index([companyId, rideDate])
+  @@map("ride_savings_records")
+}
+
+enum SavingsReportStatus {
+  draft
+  sent
+  archived
+
+  @@map("savings_report_status")
+}
+
+/// Generated monthly per company — total_savings is always
+/// total_market_benchmark_cost - total_org_spend, never derived from
+/// CC Ride's internal fare formula, so the figure holds up in a renewal
+/// conversation with the client's finance team.
+model CorporateSavingsReport {
+  id          BigInt   @id @default(autoincrement())
+  companyId   String   @map("company_id") @db.Uuid
+  periodStart DateTime @map("period_start") @db.Date
+  periodEnd   DateTime @map("period_end") @db.Date
+
+  totalRides               Int     @map("total_rides")
+  totalMarketBenchmarkCost Decimal @map("total_market_benchmark_cost") @db.Decimal(15, 2)
+  totalOrgSpend            Decimal @map("total_org_spend") @db.Decimal(15, 2)
+  totalSavings             Decimal @map("total_savings") @db.Decimal(15, 2)
+  savingsPercentage        Decimal @map("savings_percentage") @db.Decimal(5, 2)
+
+  status        SavingsReportStatus @default(draft)
+  pdfUrl        String?             @map("pdf_url")
+  generatedById BigInt              @map("generated_by")
+  generatedAt   DateTime            @default(now()) @map("generated_at")
+
+  company     Company   @relation(fields: [companyId], references: [id])
+  generatedBy AdminUser @relation(fields: [generatedById], references: [id])
+
+  @@index([companyId, periodStart])
+  @@map("corporate_savings_reports")
 }

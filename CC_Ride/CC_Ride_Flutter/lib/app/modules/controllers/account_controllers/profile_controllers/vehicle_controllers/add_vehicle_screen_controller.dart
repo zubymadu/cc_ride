@@ -93,6 +93,7 @@ class AddVehicleScreenController extends GetxController {
   Map<String, String> userHeader = {
     "Content-type": "application/json",
     "Accept": "application/json",
+    "Authorization": "Bearer ${getData.read('token') ?? ''}",
   };
 
   Future colorTypeModelListApi() async {
@@ -149,6 +150,13 @@ class AddVehicleScreenController extends GetxController {
     try {
       var uri = Uri.parse(Confing.baseurl + Confing.addvehicle);
       var request = http.MultipartRequest('POST', uri);
+      // Multipart requests don't inherit userHeader automatically, and this
+      // request never attached it — every add/edit vehicle call was hitting
+      // requireAuth with no Authorization header at all, hence the 401.
+      // Only the auth header is added here (not the full userHeader map,
+      // which sets a JSON Content-Type that would collide with the
+      // multipart/form-data boundary header http.MultipartRequest sets itself).
+      request.headers['Authorization'] = "Bearer ${getData.read('token') ?? ''}";
 
       request.fields.addAll({
         "uid": "${getData.read("userLogin")["id"]}",
@@ -228,6 +236,8 @@ class AddVehicleScreenController extends GetxController {
         'POST',
         Uri.parse(Confing.baseurl + Confing.editvehicle),
       );
+      // Same missing-Authorization-header bug as addVehicleApi above.
+      request.headers['Authorization'] = "Bearer ${getData.read('token') ?? ''}";
 
       request.fields.addAll({
         'uid': "${getData.read("userLogin")["id"]}",

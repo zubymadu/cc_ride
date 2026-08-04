@@ -250,8 +250,17 @@ class RideScheduleScreenView extends GetView<RideScheduleScreenController> {
                                       if (value != null) {
                                         final now = DateTime.now();
                                         c.selectedTime = value;
+                                        // TimeOfDay.format(context) is
+                                        // locale-dependent ("8:00 AM" on a
+                                        // 12-hour device) — splitting off the
+                                        // AM/PM marker silently drops it,
+                                        // turning a 3 PM departure into 3 AM
+                                        // once the backend parses it as a
+                                        // bare 24-hour string. hour/minute
+                                        // are always 24-hour internally, so
+                                        // build the string from those instead.
                                         c.postTripController.startTime =
-                                            value.format(context).toString().split(" ").first;
+                                            '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
                                         c.originTime = DateTime(
                                             now.year,
                                             now.month,

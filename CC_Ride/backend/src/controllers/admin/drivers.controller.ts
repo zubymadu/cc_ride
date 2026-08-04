@@ -5,6 +5,7 @@ import crypto from 'crypto'
 import { prisma } from '../../lib/prisma'
 import { ok, fail, serverError } from '../../lib/response'
 import { dec } from '../../lib/naira'
+import { resolveRequiredIdentity } from '../../lib/identity'
 
 export async function listDrivers(req: Request, res: Response) {
   try {
@@ -138,6 +139,10 @@ export async function listRides(req: Request, res: Response) {
 
     ok(res, bookings.map((b) => ({
       id:           b.id,
+      // The row itself is booking-shaped (passenger/driver/fare view), but
+      // editRide/deleteRide operate on the Ride record — a different id
+      // space — so expose it explicitly for anything built against this list.
+      ride_id:      b.rideId,
       passenger:    b.passenger.name,
       driver:       b.driver?.name ?? '—',
       company_name: b.company?.name ?? null,
@@ -156,20 +161,24 @@ export async function listRides(req: Request, res: Response) {
 // ─── POST /admin/drivers/create ───────────────────────────────────────────────
 
 const CreateDriverSchema = z.object({
-  name:           z.string().min(2),
-  mobile:         z.string().min(7),
-  email:          z.string().email().optional(),
-  password:       z.string().min(6).optional(),
-  license_number: z.string().min(3),
-  license_expiry: z.string(), // ISO date YYYY-MM-DD
-  nin:            z.string().optional(),
-  bvn:            z.string().optional(),
-  auto_activate:  z.boolean().default(false),
+  name:            z.string().min(2),
+  mobile:          z.string().min(7),
+  email:           z.string().email().optional(),
+  password:        z.string().min(6).optional(),
+  license_number:  z.string().min(3),
+  license_expiry:  z.string(), // ISO date YYYY-MM-DD
+  nin:             z.string().optional(),
+  passport_number: z.string().optional(),
+  bvn:             z.string().optional(),
+  auto_activate:   z.boolean().default(false),
 })
 
 export async function createDriver(req: Request, res: Response) {
   try {
     const data = CreateDriverSchema.parse(req.body)
+
+    const identity = resolveRequiredIdentity(data.nin, data.passport_number)
+    if (!identity.ok) { fail(res, identity.error); return }
 
     const exists = await prisma.user.findFirst({ where: { mobile: data.mobile } })
     if (exists) { fail(res, 'A user with this phone number already exists'); return }
@@ -182,6 +191,8 @@ export async function createDriver(req: Request, res: Response) {
         name:             data.name,
         mobile:           data.mobile,
         email:            data.email ?? null,
+        nin:              identity.nin,
+        passportNumber:   identity.passportNumber,
         passwordHash:     hash,
         isDriver:         true,
         isMobileVerified: true,
@@ -190,7 +201,7 @@ export async function createDriver(req: Request, res: Response) {
           create: {
             licenseNumber: data.license_number,
             licenseExpiry: new Date(data.license_expiry),
-            nin:    data.nin ?? null,
+            nin:    identity.nin, // mirrored here too — DriverProfile.nin predates the User-level field
             bvn:    data.bvn ?? null,
             status: data.auto_activate ? 'active' : 'pending',
           },
@@ -205,7 +216,13 @@ export async function createDriver(req: Request, res: Response) {
       status:  data.auto_activate ? 'active' : 'pending',
       ...(data.password ? {} : { generated_password: password }),
     }, 'Driver registered')
-  } catch (err) {
+  } catch (err: any) {
+    if (err?.code === 'P2002') {
+      const field = err?.meta?.target?.[0]
+      if (field === 'nin') { fail(res, 'A different account already exists with this NIN'); return }
+      if (field === 'passport_number') { fail(res, 'A different account already exists with this passport number'); return }
+      fail(res, 'A user with this email already exists'); return
+    }
     serverError(res, err)
   }
 }
@@ -329,6 +346,148 @@ export async function livePositions(_req: Request, res: Response) {
         last_seen:    pos?.recordedAt?.toISOString() ?? null,
       }
     }))
+  } catch (err) {
+    serverError(res, err)
+  }
+}
+
+// ─── Housekeeping: edit / delete a driver ───────────────────────────────────
+// A "driver" is a User + DriverProfile pair — edits here correct data-entry
+// mistakes (license details, contact info), not status (approveDriver/
+// updateDriverStatus already own that, same reasoning as userAction vs
+// editUser/deleteUser).
+
+const EditDriverSchema = z.object({
+  name:            z.string().min(2).optional(),
+  email:           z.string().email().nullable().optional(),
+  mobile:          z.string().min(7).optional(),
+  license_number:  z.string().min(3).optional(),
+  license_expiry:  z.string().optional(), // ISO date
+  nin:             z.string().nullable().optional(),
+  bvn:             z.string().nullable().optional(),
+})
+
+export async function editDriver(req: Request, res: Response) {
+  try {
+    const userId = String(req.params.id)
+    const data = EditDriverSchema.parse(req.body)
+
+    const driver = await prisma.driverProfile.findUnique({ where: { userId } })
+    if (!driver) { fail(res, 'Driver not found'); return }
+
+    const [user] = await prisma.$transaction([
+      prisma.user.update({
+        where: { id: userId },
+        data: {
+          ...(data.name   !== undefined ? { name: data.name }     : {}),
+          ...(data.email  !== undefined ? { email: data.email }   : {}),
+          ...(data.mobile !== undefined ? { mobile: data.mobile } : {}),
+        },
+      }),
+      prisma.driverProfile.update({
+        where: { userId },
+        data: {
+          ...(data.license_number !== undefined ? { licenseNumber: data.license_number }        : {}),
+          ...(data.license_expiry !== undefined ? { licenseExpiry: new Date(data.license_expiry) } : {}),
+          ...(data.nin            !== undefined ? { nin: data.nin }                              : {}),
+          ...(data.bvn            !== undefined ? { bvn: data.bvn }                              : {}),
+        },
+      }),
+    ])
+    ok(res, { id: user.id, name: user.name, email: user.email, mobile: user.mobile }, 'Driver updated')
+  } catch (err: any) {
+    if (err?.code === 'P2002') { fail(res, 'Another account already uses that email or mobile number'); return }
+    serverError(res, err)
+  }
+}
+
+export async function deleteDriver(req: Request, res: Response) {
+  try {
+    const userId = String(req.params.id)
+    const force = req.query.force === 'true'
+
+    const driver = await prisma.driverProfile.findUnique({ where: { userId } })
+    if (!driver) { fail(res, 'Driver not found'); return }
+
+    if (!force) {
+      const rideCount = await prisma.ride.count({ where: { driverId: userId, status: { in: ['completed', 'in_progress'] } } })
+      if (rideCount > 0) {
+        fail(res, `This driver has ${rideCount} real ride(s) on record — pass force=true to delete anyway (this permanently removes that history too)`)
+        return
+      }
+    }
+
+    // Deletes the underlying User row — DriverProfile cascades with it,
+    // same as any other account deletion.
+    await prisma.user.delete({ where: { id: userId } })
+    ok(res, {}, 'Driver deleted')
+  } catch (err) {
+    serverError(res, err)
+  }
+}
+
+// ─── Housekeeping: edit / delete a ride ─────────────────────────────────────
+
+const EditRideSchema = z.object({
+  origin_address:         z.string().min(5).optional(),
+  origin_lat:             z.number().optional(),
+  origin_lng:             z.number().optional(),
+  destination_address:    z.string().min(5).optional(),
+  destination_lat:        z.number().optional(),
+  destination_lng:        z.number().optional(),
+  scheduled_at:           z.string().optional(),
+  base_fare:              z.number().positive().optional(),
+  available_seats:        z.number().int().min(0).max(20).optional(),
+  trip_notes:             z.string().nullable().optional(),
+})
+
+export async function editRide(req: Request, res: Response) {
+  try {
+    const id = String(req.params.id)
+    const data = EditRideSchema.parse(req.body)
+
+    const ride = await prisma.ride.findUnique({ where: { id } })
+    if (!ride) { fail(res, 'Ride not found'); return }
+
+    const updated = await prisma.ride.update({
+      where: { id },
+      data: {
+        ...(data.origin_address      !== undefined ? { originAddress: data.origin_address }           : {}),
+        ...(data.origin_lat          !== undefined ? { originLat: data.origin_lat }                    : {}),
+        ...(data.origin_lng          !== undefined ? { originLng: data.origin_lng }                    : {}),
+        ...(data.destination_address !== undefined ? { destinationAddress: data.destination_address }  : {}),
+        ...(data.destination_lat     !== undefined ? { destinationLat: data.destination_lat }          : {}),
+        ...(data.destination_lng     !== undefined ? { destinationLng: data.destination_lng }          : {}),
+        ...(data.scheduled_at        !== undefined ? { scheduledAt: new Date(data.scheduled_at) }      : {}),
+        ...(data.base_fare           !== undefined ? { baseFare: data.base_fare }                      : {}),
+        ...(data.available_seats     !== undefined ? { availableSeats: data.available_seats }          : {}),
+        ...(data.trip_notes          !== undefined ? { tripNotes: data.trip_notes }                    : {}),
+      },
+    })
+    ok(res, { id: updated.id, status: updated.status }, 'Ride updated')
+  } catch (err) {
+    serverError(res, err)
+  }
+}
+
+export async function deleteRide(req: Request, res: Response) {
+  try {
+    const id = String(req.params.id)
+    const force = req.query.force === 'true'
+
+    const ride = await prisma.ride.findUnique({ where: { id } })
+    if (!ride) { fail(res, 'Ride not found'); return }
+
+    if (!force) {
+      const bookingCount = await prisma.booking.count({ where: { rideId: id, status: { in: ['completed', 'confirmed', 'in_progress'] } } })
+      if (bookingCount > 0) {
+        fail(res, `This ride has ${bookingCount} real booking(s) on record — pass force=true to delete anyway (this permanently removes that history too)`)
+        return
+      }
+    }
+
+    await prisma.ride.delete({ where: { id } })
+    ok(res, {}, 'Ride deleted')
   } catch (err) {
     serverError(res, err)
   }

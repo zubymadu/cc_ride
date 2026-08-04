@@ -53,6 +53,7 @@ class TripPreviewScreenController extends GetxController {
   final Map<String, String> userHeader = {
     "Content-type": "application/json",
     "Accept": "application/json",
+    "Authorization": "Bearer ${getData.read('token') ?? ''}",
   };
   Future tripDetailsApi({required String tripId}) async => commonApi(
     url: Confing.baseurl + Confing.tripDetails,
@@ -72,15 +73,13 @@ class TripPreviewScreenController extends GetxController {
         Uri.parse(url),
         headers: userHeader,
         body: jsonEncode(body),
-      );
+      ).timeout(const Duration(seconds: 15));
       log(name: "============= Trip Details API RESPONSE =============", response.body,
 );
       final data = jsonDecode(response.body);
       if (response.statusCode == 200 && data["Result"] == "true") {
         tripDetailsApiModel = tripDetailsApiModelFromJson(response.body);
         if (tripDetailsApiModel!.result == "true") {
-          isLoading = false;
-          update();
           return data;
         } else {
           showToastMessage(tripDetailsApiModel!.responseMsg!);
@@ -90,6 +89,9 @@ class TripPreviewScreenController extends GetxController {
       }
     } catch (e) {
       log(name: "API ERROR", "$e");
+    } finally {
+      isLoading = false;
+      update();
     }
     return null;
   }
@@ -507,7 +509,7 @@ class TripPreviewScreenController extends GetxController {
       var data = jsonDecode(response.body);
       if (response.statusCode == 200) {
         if (data["Result"] == "true") {
-          Get.offAllNamed(Routes.BOTTOM_BAR_SCREEN, arguments: 2);
+          Get.offAllNamed(Routes.BOTTOM_BAR_SCREEN, arguments: 1);
           showToastMessage("${data["ResponseMsg"]}");
           return data;
         } else {

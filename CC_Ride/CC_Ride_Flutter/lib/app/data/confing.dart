@@ -7,7 +7,13 @@ class Confing {
   static String mapkey = "AIzaSyCmwZUAtfztYbllQ5U093ukJkyNXQ7nZlQ";
 
   //======================= oneSignalKey  =======================
-  static String oneSignalKey = "************";
+  // Was a literal placeholder ("************") that never got filled in —
+  // initPlatformState() (called from login/register) re-initializes OneSignal
+  // with this value *after* OneSignalService.initializeOneSignal() already
+  // initialized it correctly at app boot with the real app ID below, silently
+  // breaking the SDK's app id binding and the "userid" tag it sets right
+  // after. That tag is what the backend now targets pushes at.
+  static String oneSignalKey = "c90e9b2c-8f33-443d-8f28-2bc1993cd367";
   static const String projectID = "**************";
   static String? firebaseKey;
 
@@ -24,6 +30,13 @@ class Confing {
   static String editPostTrip = 'edit_post_trip.php';
   static String cancelTrip = 'cancel_trip.php';
   static String addvehicle = 'add_vehicle.php';
+  static String estimateFare = 'estimate_fare.php';
+
+  //======================= corporate wallets =======================
+  static String companyWallets = 'user/company-wallets';
+
+  //======================= support tickets =======================
+  static String supportTickets = 'user/support/tickets';
 
   static String dataGet = 'dataget.php';
   static String colorTypeModellist = 'color_type_modellist.php';
@@ -44,6 +57,8 @@ class Confing {
   //======================= trip =======================
   static String tripRequest = 'trip_request.php';
   static String tripRequestlist = 'trip_request_list.php';
+  static String confirmMatchedRequest = 'confirm_matched_request.php';
+  static String declineMatchedRequest = 'decline_matched_request.php';
   static String editTripRequest = 'edit_trip_request.php';
   static String deleteTripRequest = 'delete_trip_request.php';
 
@@ -56,9 +71,23 @@ class Confing {
   //======================= find =======================
   static String findTrip = 'find_trip.php';
   static String findTripDetail = 'find_trip_detail.php';
+  static String nearbyRoutes = 'nearby_routes.php';
+  static String driverRouteCreate = 'driver_route_create.php';
+  static String driverRouteEdit = 'driver_route_edit.php';
+  static String driverRouteList = 'driver_route_list.php';
+  static String driverRouteDeactivate = 'driver_route_deactivate.php';
+  static String nearbyRequestsRoute = 'nearby_requests_route.php';
+  static String confirmBookingRequest = 'confirm_booking_request.php';
+  static String declineBookingRequest = 'decline_booking_request.php';
+  static String routeBookingRequests = 'route_booking_requests.php';
   static String requestList = 'request_list.php';
   static String bookSeat = 'book_seat.php';
   static String cancleSeat = 'cancle_seat.php';
+
+  //======================= notifications =======================
+  static String notificationList = 'notification_list.php';
+  static String notificationRead = 'notification_read.php';
+  static String notificationDelete = 'notification_delete.php';
 
   //======================= payment =======================
   static String paymentgateway = 'paymentgateway.php';
@@ -101,6 +130,19 @@ class Confing {
   static const String corporatePolicies = "corporate/policies";
   static const String corporateCreatePolicy = "corporate/policies/create";
   static const String corporateTogglePolicy = "corporate/policies/toggle";
+
+  // Pool vehicles / driver operating modes
+  static const String corporatePoolVehicles = "corporate/pool-vehicles";
+  static const String corporateDriverAccess = "corporate/driver-access";
+  static const String corporateDriverAccessGrant = "corporate/driver-access/grant";
+  static const String corporateDriverAccessRevoke = "corporate/driver-access/revoke";
+  static const String corporateApprovePersonalVehicle = "corporate/employees"; // + /:id/approve-personal-vehicle
+
+  // Fixed routes (Find Shared Route)
+  static const String corporateRoutes = "corporate/routes";
+  static const String corporateRouteSchedules = "corporate/routes"; // + /:id/schedules
+  static const String corporateAccessRequests = "corporate/access-requests";
+  static const String corporateAccessRequestsMine = "corporate/access-requests/mine";
 
   //======================= varification =======================
   static const String earning = "earning.php";

@@ -13,32 +13,62 @@ class PastBookingList extends GetView<MyBookingScreenController> {
     final controller = Get.find<MyBookingScreenController>();
     return GetBuilder<MyBookingScreenController>(
       builder: (_) {
-        return controller.pastTripListApiModel!.tripData!.isEmpty
-            ? Center(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Image.asset("assets/image/emptyOrder.png", height: 150),
-                    const SizedBox(height: 10),
-                    Text(
-                      "${controller.pastTripListApiModel!.responseMsg}",
-                      style: const TextStyle(
-                        fontFamily: 'Inter',
-                        fontWeight: FontWeight.w500,
-                        color: ccSecondaryText,
+        return RefreshIndicator(
+          onRefresh: () => controller.myBookingListApi(status: "past"),
+          child: controller.pastTripListApiModel!.tripData!.isEmpty
+            ? ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                children: [
+                  SizedBox(
+                    height: MediaQuery.of(context).size.height * 0.6,
+                    child: Center(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Image.asset("assets/image/emptyOrder.png", height: 150),
+                          const SizedBox(height: 10),
+                          Text(
+                            "${controller.pastTripListApiModel!.responseMsg}",
+                            style: const TextStyle(
+                              fontFamily: 'Inter',
+                              fontWeight: FontWeight.w500,
+                              color: ccSecondaryText,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               )
             : ListView.separated(
-                physics: const BouncingScrollPhysics(),
+                physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.all(10),
                 shrinkWrap: true,
                 itemCount:
                     controller.pastTripListApiModel!.tripData!.length,
                 itemBuilder: (context, index) {
+                  // Same resilience as CurrentBookingList — an unparsable or
+                  // empty trip_start_time (a synthesized, never-matched ride
+                  // request has no confirmed time slot) must never throw
+                  // inside itemBuilder, or this whole tab silently stops
+                  // rendering rather than just that one row.
+                  DateTime safeParse(String date, String time) {
+                    try {
+                      return DateTime.parse("$date ${time.isEmpty ? '00:00' : time}");
+                    } catch (_) {
+                      try {
+                        return DateTime.parse(date);
+                      } catch (_) {
+                        return DateTime.now();
+                      }
+                    }
+                  }
+                  final tripDate = safeParse(
+                    controller.pastTripListApiModel!.tripData![index].tripStartDate.toString().split(" ").first,
+                    controller.pastTripListApiModel!.tripData![index].tripStartTime.toString().split(" ").first,
+                  );
                   return controller.bookDetailsData(
                     onTap: () {
                       Get.toNamed(
@@ -52,18 +82,8 @@ class PastBookingList extends GetView<MyBookingScreenController> {
                       )!.then((_) => controller.update());
                     },
                     date: [
-                      DateFormat("EEE, MMM d 'at' h:mma").format(
-                        DateTime.parse(
-                          "${controller.pastTripListApiModel!.tripData![index].tripStartDate.toString().split(" ").first} at ${controller.pastTripListApiModel!.tripData![index].tripStartTime.toString().split(" ").first}"
-                              .replaceAll(" at ", " "),
-                        ),
-                      ),
-                      DateFormat("EEE, MMM d 'at' h:mma").format(
-                        DateTime.parse(
-                          "${controller.pastTripListApiModel!.tripData![index].tripStartDate.toString().split(" ").first} at ${controller.pastTripListApiModel!.tripData![index].tripStartTime.toString().split(" ").first}"
-                              .replaceAll(" at ", " "),
-                        ),
-                      ),
+                      DateFormat("EEE, MMM d 'at' h:mma").format(tripDate),
+                      DateFormat("EEE, MMM d 'at' h:mma").format(tripDate),
                     ],
                     totalSeat:
                         "${controller.pastTripListApiModel!.tripData![index].totalSeat}",
@@ -93,7 +113,8 @@ class PastBookingList extends GetView<MyBookingScreenController> {
                   );
                 },
                 separatorBuilder: (_, __) => const SizedBox(height: 10),
-              );
+              ),
+        );
       },
     );
   }

@@ -1,4 +1,5 @@
 import 'package:carride/app/modules/controllers/account_controllers/account_screen_controller.dart';
+import 'package:carride/app/modules/controllers/account_controllers/my_booking_controllers/my_booking_screen_controller.dart';
 import 'package:carride/app/modules/controllers/account_controllers/wallet_screen_controller.dart';
 import 'package:carride/app/modules/controllers/help_controller/help_screen_controller.dart';
 import 'package:carride/app/modules/controllers/message_controllers/message_list_controller.dart';
@@ -26,6 +27,10 @@ class BottomBarScreenBinding extends Bindings {
     );
     Get.lazyPut<TripScreenController>(
       () => TripScreenController(),
+      fenix: true
+    );
+    Get.lazyPut<MyBookingScreenController>(
+      () => MyBookingScreenController(),
       fenix: true
     );
     Get.lazyPut<HelpScreenController>(

@@ -125,6 +125,11 @@ class RegUserScreenController extends GetxController {
         // Save user data locally
         save("userLogin", responseData["UserLogin"]);
         save("isUserLogin", true);
+        // Without this, every authenticated endpoint (almost everything
+        // past registration) would 401 until the user explicitly logged
+        // out and back in — legacyRegUser returns a token exactly like
+        // legacyLogin does, it just wasn't being persisted here.
+        save("token", responseData["token"] ?? "");
         initPlatformState(key: Confing.oneSignalKey, loginId: "${responseData["UserLogin"]["id"]}");
 
         showToastMessage("${responseData["ResponseMsg"]}");

@@ -35,6 +35,11 @@ class RecurringTrip extends GetView<RideScheduleScreenController> {
                   color: ccNavyText,
                 ),
               ),
+              const SizedBox(height: 4),
+              Text(
+                'Your trip repeats every day starting from the earliest date you pick — tap any date to set that start.',
+                style: CCText.bodyMd.copyWith(color: ccSecondaryText),
+              ),
               const SizedBox(height: 10),
               Container(
                 width: Get.width / 1.2,
@@ -103,16 +108,20 @@ class RecurringTrip extends GetView<RideScheduleScreenController> {
                       if (selected.isNotEmpty) {
                         selected.sort((a, b) => a.compareTo(b));
                         final dateFormat = DateFormat('yyyy-MM-dd');
-                        controller.postTripController.startDate =
-                            controller.selectedDates
-                                .map((date) =>
-                                    dateFormat.format(date))
-                                .join(',');
-                        controller.postTripController.returnDate =
-                            controller.selectedDates
-                                .map((date) =>
-                                    dateFormat.format(date))
-                                .join(',');
+                        // The backend's recurring model is "starts on one
+                        // date, repeats every day indefinitely from there"
+                        // (scheduleType: recurring_daily — see
+                        // materializeRecurringRidesForDate) — it has no
+                        // concept of specific non-consecutive dates. Sending
+                        // the full comma-joined selection here used to feed
+                        // straight into the backend's `new Date(...)` call
+                        // and produce an Invalid Date, silently corrupting
+                        // every recurring trip with more than one date
+                        // picked. Only the earliest date is actually
+                        // meaningful to the backend.
+                        final anchor = dateFormat.format(controller.selectedDates.first);
+                        controller.postTripController.startDate = anchor;
+                        controller.postTripController.returnDate = anchor;
                       } else {
                         controller.postTripController.startDate = '';
                         controller.postTripController.returnDate = '';
@@ -153,13 +162,14 @@ class RecurringTrip extends GetView<RideScheduleScreenController> {
                                 if (picked != controller.selectedTime) {
                                   final now = DateTime.now();
                                   controller.selectedTime = picked;
+                                  // hour/minute are always 24-hour
+                                  // internally — format(context) is
+                                  // locale-dependent and splitting off the
+                                  // AM/PM marker silently produces the
+                                  // wrong time.
                                   controller.postTripController
                                           .startTime =
-                                      picked
-                                          .format(context)
-                                          .toString()
-                                          .split(' ')
-                                          .first;
+                                      '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
                                   controller.originTime = DateTime(
                                       now.year,
                                       now.month,
@@ -204,13 +214,10 @@ class RecurringTrip extends GetView<RideScheduleScreenController> {
                                 final picked = value;
                                 final now = DateTime.now();
                                 controller.selectedTime1 = picked;
+                                // Same fix as departure time above.
                                 controller.postTripController
                                         .returnTime =
-                                    picked
-                                        .format(context)
-                                        .toString()
-                                        .split(' ')
-                                        .first;
+                                    '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
                                 controller.originTime1 = DateTime(
                                     now.year,
                                     now.month,

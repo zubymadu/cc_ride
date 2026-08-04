@@ -311,8 +311,13 @@ Future addWalletPaymentSheet() {
                                         .split(',');
                                     paypalPayment(
                                       function: (e) {
-                                        walletScreenController.walletUpdateApi(
-                                            amount: walletAmountController.text);
+                                        // No PayPal backend verification exists in
+                                        // this build (only Paystack does) — the
+                                        // server will correctly reject this rather
+                                        // than credit an unverified amount.
+                                        final reference = '${e['paymentId']}';
+                                        walletScreenController
+                                            .walletUpdateApi(reference: reference);
                                       },
                                       amt: walletAmountController.text,
                                       clientId: ids[0],

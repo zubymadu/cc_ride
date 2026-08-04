@@ -57,6 +57,12 @@ class Datum {
     double? avgRating;
     String? requestDatetime;
     List<TripInfo>? tripInfo;
+    String? matchedTripId;
+    String? matchedDriverName;
+    String? matchedVehicleTitle;
+    String? matchedSeatPrice;
+    String? matchedStartDate;
+    String? matchedStartTime;
 
     Datum({
         this.requestId,
@@ -79,6 +85,12 @@ class Datum {
         this.avgRating,
         this.requestDatetime,
         this.tripInfo,
+        this.matchedTripId,
+        this.matchedDriverName,
+        this.matchedVehicleTitle,
+        this.matchedSeatPrice,
+        this.matchedStartDate,
+        this.matchedStartTime,
     });
 
     factory Datum.fromJson(Map<String, dynamic> json) => Datum(
@@ -102,6 +114,12 @@ class Datum {
         avgRating: json["avg_rating"]?.toDouble(),
         requestDatetime: json["request_datetime"],
         tripInfo: json["trip_info"] == null ? [] : List<TripInfo>.from(json["trip_info"]!.map((x) => TripInfo.fromJson(x))),
+        matchedTripId: json["matched_trip_id"],
+        matchedDriverName: json["matched_driver_name"],
+        matchedVehicleTitle: json["matched_vehicle_title"],
+        matchedSeatPrice: json["matched_seat_price"],
+        matchedStartDate: json["matched_start_date"],
+        matchedStartTime: json["matched_start_time"],
     );
 
     Map<String, dynamic> toJson() => {
@@ -125,6 +143,12 @@ class Datum {
         "avg_rating": avgRating,
         "request_datetime": requestDatetime,
         "trip_info": tripInfo == null ? [] : List<dynamic>.from(tripInfo!.map((x) => x.toJson())),
+        "matched_trip_id": matchedTripId,
+        "matched_driver_name": matchedDriverName,
+        "matched_vehicle_title": matchedVehicleTitle,
+        "matched_seat_price": matchedSeatPrice,
+        "matched_start_date": matchedStartDate,
+        "matched_start_time": matchedStartTime,
     };
 }
 

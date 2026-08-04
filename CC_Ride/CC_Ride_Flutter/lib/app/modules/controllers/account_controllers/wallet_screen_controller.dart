@@ -63,6 +63,7 @@ class WalletScreenController extends GetxController {
   Map<String, String> userHeader = {
     "Content-type": "application/json",
     "Accept": "application/json",
+    "Authorization": "Bearer ${getData.read('token') ?? ''}",
   };
 
   Future walletReportApi() async {
@@ -110,10 +111,13 @@ class WalletScreenController extends GetxController {
   bool get walletUpadtLoader => _walletUpadtLoader.value;
   set walletUpadtLoader(bool value) => _walletUpadtLoader.value = value;
 
-  Future walletUpdateApi({required String amount}) async {
+  // The server verifies this reference against Paystack directly and credits
+  // the amount Paystack confirms was paid — it no longer trusts a
+  // client-declared amount. `reference` must be the Paystack transaction
+  // reference (the `trxref`/`reference` query param on the callback URL).
+  Future walletUpdateApi({required String reference}) async {
     Map body = {
-      "uid": int.parse("${getData.read("userLogin")["id"]}"),
-      "wallet": amount,
+      "payment_id": reference,
     };
 
     try {
@@ -156,7 +160,13 @@ class WalletScreenController extends GetxController {
   RazorPayClass razorPayClass = RazorPayClass();
 
   void handlePaymentSuccess(PaymentSuccessResponse response) {
-    walletUpdateApi(amount: walletAount);
+    // Razorpay has no matching backend verification in this build (only
+    // Paystack does) — this call will be correctly rejected server-side
+    // rather than crediting an unverified amount. Wire up Razorpay
+    // verification server-side before re-enabling this path for real.
+    if (response.paymentId != null) {
+      walletUpdateApi(reference: response.paymentId!);
+    }
     debugPrint("+++++++++++++++++++++++++++ walletAount : $walletAount");
     debugPrint("++++++++++++++++++++++++ transaction Id : ${response.paymentId}");
   }
@@ -201,7 +211,14 @@ class WalletScreenController extends GetxController {
           debugPrint("Status parameter: $status");
           if (status == status2) {
             debugPrint("Purchase successful.");
-            walletUpdateApi(amount: walletAount);
+            final reference = uri.queryParameters[tId];
+            if (reference == null || reference.isEmpty) {
+              walletUpadtLoader = false;
+              update();
+              showToastMessage("Unable to confirm payment reference");
+              return NavigationDecision.navigate;
+            }
+            walletUpdateApi(reference: reference);
             return NavigationDecision.navigate;
           } else {
             walletUpadtLoader = false;

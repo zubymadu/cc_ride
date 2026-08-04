@@ -38,6 +38,7 @@ class SeatingPlanScreenController extends GetxController {
   final Map<String, String> userHeader = {
     "Content-type": "application/json",
     "Accept": "application/json",
+    "Authorization": "Bearer ${getData.read('token') ?? ''}",
   };
 
   // setChatId(String senderId, String receiverId) {
@@ -83,6 +84,7 @@ class SeatingPlanScreenController extends GetxController {
 
       Map body = {
         "uid": getData.read("userLogin")["id"], // or getData.read
+        "trip_id": tripPreviewScreenController.tripDetailsApiModel!.tripData!.tripId!,
         "book_id": bookId,
         "book_uid": bookUid,
       };
@@ -137,6 +139,7 @@ class SeatingPlanScreenController extends GetxController {
 
       Map body = {
         "uid": getData.read("userLogin")["id"], // or getData.read
+        "trip_id": tripPreviewScreenController.tripDetailsApiModel!.tripData!.tripId!,
         "book_id": bookId,
         "book_uid": bookUid,
       };
@@ -225,7 +228,7 @@ class SeatingPlanScreenController extends GetxController {
       var data = jsonDecode(response.body);
 
       if (response.statusCode == 200) {
-        if (data["status"] == "success") {
+        if (data["Result"] == "true") {
           tripPreviewScreenController.tripDetailsApi(
             tripId: tripPreviewScreenController.tripDetailsApiModel!.tripData!.tripId!,
           ).then((value) {
@@ -235,13 +238,13 @@ class SeatingPlanScreenController extends GetxController {
             approve = false;
             update();
           });
-          showToastMessage("${data["message"]}");
+          showToastMessage("${data["ResponseMsg"]}");
         } else {
           reject = false;
           update();
           approve = false;
           update();
-          showToastMessage("${data["message"]}");
+          showToastMessage("${data["ResponseMsg"]}");
         }
         return data;
       } else {

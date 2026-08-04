@@ -61,3 +61,29 @@ mobile/coverage/
 .parcel-cache/
 coverage/
 .nyc_output/
+
+# ── Secrets / credentials ────────────────────────────────────────────────────
+*.pem
+google-services.json
+
+# ── Backups / DB dumps / build artifacts (large, generated, not source) ──────
+backups/
+*.tar.gz
+*.zip
+**/*.bak_before_restore/
+**/*.bak_before_restore.*/
+
+# ── Non-source project assets (docs, video, legacy panel, raw DB) ────────────
+Demo-Video/
+Documentation/
+cc_ride_designs/
+agentDemo/
+CC_Ride_Admin_Panel/
+CC_Ride_Database/
+generated_icons/
+/ccride_launch_check.png
+/perm_check.png
+/crash_check.png
+
+# ── Agent tooling config, not app source ──────────────────────────────────────
+/.claude/

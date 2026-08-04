@@ -328,3 +328,87 @@ class RidePolicyModel {
     return allowedDays.map((d) => names[d]).join(', ');
   }
 }
+
+// ─── Fixed Routes ("Find Shared Route") ────────────────────────────────────────
+
+class RouteModel {
+  final String id;
+  final String code;
+  final String name;
+  final String originName;
+  final String destinationName;
+  final bool isActive;
+  final int stopCount;
+  final int scheduleCount;
+
+  RouteModel({
+    required this.id,
+    required this.code,
+    required this.name,
+    required this.originName,
+    required this.destinationName,
+    required this.isActive,
+    required this.stopCount,
+    required this.scheduleCount,
+  });
+
+  factory RouteModel.fromJson(Map<String, dynamic> json) => RouteModel(
+        id: json['id'] ?? '',
+        code: json['code'] ?? '',
+        name: json['name'] ?? '',
+        originName: json['origin_name'] ?? '',
+        destinationName: json['destination_name'] ?? '',
+        isActive: json['is_active'] == true || json['is_active'] == 1,
+        stopCount: int.tryParse('${json['stop_count']}') ?? 0,
+        scheduleCount: int.tryParse('${json['schedule_count']}') ?? 0,
+      );
+}
+
+class RouteScheduleModel {
+  final String id;
+  final String departureTime;
+  final List<int> daysOfWeek;
+  final String driverId;
+  final String driverName;
+  final String vehicleId;
+  final String vehicleTitle;
+  final int seatCapacity;
+  final double fare;
+  final bool isActive;
+
+  RouteScheduleModel({
+    required this.id,
+    required this.departureTime,
+    required this.daysOfWeek,
+    required this.driverId,
+    required this.driverName,
+    required this.vehicleId,
+    required this.vehicleTitle,
+    required this.seatCapacity,
+    required this.fare,
+    required this.isActive,
+  });
+
+  factory RouteScheduleModel.fromJson(Map<String, dynamic> json) =>
+      RouteScheduleModel(
+        id: '${json['id'] ?? ''}',
+        departureTime: json['departure_time'] ?? '',
+        daysOfWeek: (json['days_of_week'] as List? ?? [])
+            .map((e) => int.tryParse('$e') ?? 0)
+            .toList(),
+        driverId: json['driver_id'] ?? '',
+        driverName: json['driver_name'] ?? '',
+        vehicleId: '${json['vehicle_id'] ?? ''}',
+        vehicleTitle: json['vehicle_title'] ?? '',
+        seatCapacity: int.tryParse('${json['seat_capacity']}') ?? 0,
+        fare: double.tryParse('${json['fare']}') ?? 0,
+        isActive: json['is_active'] == true || json['is_active'] == 1,
+      );
+
+  String get daysLabel {
+    const names = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    if (daysOfWeek.length == 7) return 'Every day';
+    final sorted = [...daysOfWeek]..sort();
+    return sorted.map((d) => names[d]).join(', ');
+  }
+}
