@@ -1,9 +1,28 @@
+import { useEffect, useState } from 'react'
 import { Smartphone, Download, Shield, Wifi } from 'lucide-react'
 
-const APK_URL = '/api/uploads/ccride-release.apk'
-const APP_VERSION = '1.0.0+8'
+// This session's actual maintained build lives at ccride-debug.apk — the
+// filename this page pointed to before (ccride-release.apk) is a stale
+// build from a much earlier session that nothing has touched since; every
+// deploy to ccride-debug.apk was silently invisible to anyone using this
+// download page. APP_VERSION was also a hand-maintained string that drifted
+// out of sync the moment a build shipped without someone remembering to
+// bump it here too — fetched from a small JSON file written alongside the
+// APK on every deploy instead, so the label can't go stale like that again.
+const APK_URL = '/api/uploads/ccride-debug.apk'
+
+interface ApkMeta { version: string; uploaded_at: string }
 
 export default function DownloadPage() {
+  const [meta, setMeta] = useState<ApkMeta | null>(null)
+
+  useEffect(() => {
+    fetch('/api/uploads/apk-version.json')
+      .then((r) => (r.ok ? r.json() : null))
+      .then(setMeta)
+      .catch(() => setMeta(null))
+  }, [])
+
   return (
     <div className="min-h-screen bg-gray-950 flex items-center justify-center p-6">
       <div className="max-w-md w-full">
@@ -21,16 +40,19 @@ export default function DownloadPage() {
           <div className="flex items-center gap-3 mb-6">
             <div className="flex-1">
               <p className="text-white font-semibold text-lg">Android App</p>
-              <p className="text-gray-500 text-sm">Version {APP_VERSION}</p>
+              <p className="text-gray-500 text-sm">
+                {meta ? `Version ${meta.version}` : 'Version unavailable'}
+                {meta && <span className="text-gray-600"> · {new Date(meta.uploaded_at).toLocaleDateString()}</span>}
+              </p>
             </div>
-            <span className="text-xs font-medium px-3 py-1 rounded-full bg-green-500/15 text-green-400 border border-green-500/30">
-              Release Build
+            <span className="text-xs font-medium px-3 py-1 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30">
+              Debug Build
             </span>
           </div>
 
           <a
             href={APK_URL}
-            download="ccride-release.apk"
+            download="ccride-debug.apk"
             className="flex items-center justify-center gap-3 w-full py-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-semibold text-base transition-colors"
           >
             <Download size={20} />
