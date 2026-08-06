@@ -118,7 +118,16 @@ class PostTripController extends GetxController {
   String get requestId => _requestId.value;
   set requestId(String value) => _requestId.value = value;
 
-  Map<String, String> userHeader = {
+  // Was a plain field, captured once when this controller instance was
+  // constructed — harmless back when every screen in the post-trip flow
+  // created its own fresh PostTripController (each construction re-read a
+  // then-current token), but this controller is now a reused singleton
+  // across the whole flow (see the Get.isRegistered guards added to
+  // multipolyline_map/vehicles/seats_details/ride_schedule screen
+  // controllers), so a stale captured token here would silently 401 every
+  // request — including the estimate call — for the lifetime of the app
+  // session. A getter re-reads the current token on every call instead.
+  Map<String, String> get userHeader => {
     "Content-type": "application/json",
     "Accept": "application/json",
     "Authorization": "Bearer ${getData.read('token') ?? ''}",
@@ -168,8 +177,18 @@ class PostTripController extends GetxController {
         routeEstimatedFare = double.tryParse("${data["data"]?["estimated_fare"] ?? 0}") ?? 0;
         routeDistanceKm = double.tryParse("${data["data"]?["distance_km"] ?? 0}") ?? 0;
         hasRouteEstimate = routeEstimatedFare > 0;
+      } else {
+        // Previously fell through silently here on any non-200/non-"true"
+        // response (e.g. an expired/invalid token) — the hint just never
+        // appeared with no way to tell why. Logging the actual status/body
+        // makes a future "the hint doesn't show" report diagnosable from
+        // device logs instead of guesswork.
+        hasRouteEstimate = false;
+        log(name: "=========== Route Estimate Fare non-success ===========",
+            "status=${response.statusCode} body=${response.body}");
       }
     } catch (e) {
+      hasRouteEstimate = false;
       log(name: "=========== Route Estimate Fare error ===========", "$e");
     } finally {
       isEstimating = false;

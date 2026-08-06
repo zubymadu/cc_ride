@@ -184,7 +184,7 @@ payBottomsheet({required String totalAmt}) {
                                       );
                                     } else {
                                       showToastMessage(
-                                          '${value?["ResponseMsg"] ?? "Unable to start Paystack payment"}');
+                                          '${value?["message"] ?? "Unable to start Paystack payment"}');
                                     }
                                   }).catchError((e) {
                                     c.isLoading = false;
@@ -223,7 +223,18 @@ payBottomsheet({required String totalAmt}) {
                                               '${getData.read('userLogin')['email']}',
                                           amount: totalAmt)
                                       .then((value) {
-                                    if (value['status'] == true) {
+                                    // Same fix as the 'paystack' branch above
+                                    // — c.isLoading was never reset and no
+                                    // error shown on this path before, so a
+                                    // failed init (e.g. no Paystack key
+                                    // configured) just hung the spinner
+                                    // forever with zero feedback.
+                                    c.isLoading = false;
+                                    c.update();
+                                    if (value != null &&
+                                        value['status'] == true &&
+                                        value['data'] != null &&
+                                        value['data']['authorization_url'] != null) {
                                       c.webViewPaymentMethod(
                                         initialUrl:
                                             '${value['data']['authorization_url']}',
@@ -231,7 +242,14 @@ payBottomsheet({required String totalAmt}) {
                                         status2: 'success',
                                         tId: 'trxref',
                                       );
+                                    } else {
+                                      showToastMessage(
+                                          '${value?["message"] ?? "Unable to start Paystack payment"}');
                                     }
+                                  }).catchError((e) {
+                                    c.isLoading = false;
+                                    c.update();
+                                    showToastMessage('Unable to start Paystack payment');
                                   });
                                 } else if (pid == '7') {
                                   c.webViewPaymentMethod(

@@ -285,7 +285,7 @@ Future addWalletPaymentSheet() {
                                         );
                                       } else {
                                         showToastMessage(
-                                            '${value?["ResponseMsg"] ?? "Unable to start Paystack payment"}');
+                                            '${value?["message"] ?? "Unable to start Paystack payment"}');
                                       }
                                     }).catchError((e) {
                                       walletScreenController.addWalletLodar = false;
@@ -338,7 +338,19 @@ Future addWalletPaymentSheet() {
                                                 '${getData.read("userLogin")["email"]}',
                                             amount: walletAmountController.text)
                                         .then((value) {
-                                      if (value['status'] == true) {
+                                      // addWalletLodar was set true above and
+                                      // never reset on this path before —
+                                      // when Paystack failed to initialize
+                                      // (e.g. no key configured in Settings),
+                                      // this whole branch just did nothing:
+                                      // no error, spinner stuck forever, "Pay
+                                      // Now" effectively dead.
+                                      walletScreenController.addWalletLodar = false;
+                                      walletScreenController.update();
+                                      if (value != null &&
+                                          value['status'] == true &&
+                                          value['data'] != null &&
+                                          value['data']['authorization_url'] != null) {
                                         walletScreenController
                                             .webViewPaymentMethod(
                                           initialUrl:
@@ -347,7 +359,14 @@ Future addWalletPaymentSheet() {
                                           status2: 'success',
                                           tId: 'trxref',
                                         );
+                                      } else {
+                                        showToastMessage(
+                                            '${value?["message"] ?? "Unable to start Paystack payment"}');
                                       }
+                                    }).catchError((e) {
+                                      walletScreenController.addWalletLodar = false;
+                                      walletScreenController.update();
+                                      showToastMessage('Unable to start Paystack payment');
                                     });
                                   } else if (walletScreenController.paymentId ==
                                       '7') {
