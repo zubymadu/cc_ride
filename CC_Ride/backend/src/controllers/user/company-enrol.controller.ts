@@ -12,6 +12,22 @@ import { z } from 'zod'
 import { prisma } from '../../lib/prisma'
 import { ok, fail, serverError } from '../../lib/response'
 
+// Every stored image path (company logoUrl, profilePicUrl, etc.) is written
+// with a leading slash (e.g. "/api/uploads/profiles/xxx"), and the Flutter
+// app always concatenates it directly onto Confing.imageurl, which already
+// ends in "/" — a leading slash on the path produces a double slash
+// ("https://api.ccride.ng//api/uploads/...") that Image.network() can't
+// resolve, so it silently falls back to a placeholder. Same fix already
+// applied to profile pics in legacy.controller.ts's picUrl() — this file's
+// endpoints (company search/profile/wallets) need it too since they also
+// feed the Flutter app, not just the admin panel (which is same-origin and
+// unaffected either way).
+function picUrl(raw: string | null | undefined): string | null {
+  if (!raw) return null
+  if (raw.startsWith('http')) return raw
+  return raw.startsWith('/') ? raw.slice(1) : raw
+}
+
 // ─── GET /user/companies/search?q= ───────────────────────────────────────────
 
 export async function searchCompanies(req: Request, res: Response) {
@@ -37,7 +53,7 @@ export async function searchCompanies(req: Request, res: Response) {
       name:     c.name,
       industry: c.industry ?? '',
       city:     c.city ?? '',
-      logo_url: c.logoUrl ?? null,
+      logo_url: picUrl(c.logoUrl),
     })))
   } catch (err) {
     serverError(res, err)
@@ -252,7 +268,7 @@ export async function getMyCompanyProfile(req: Request, res: Response) {
     ok(res, {
       company_id:       e.company.id,
       company_name:     e.company.name,
-      company_logo:     e.company.logoUrl ?? null,
+      company_logo:     picUrl(e.company.logoUrl),
       company_status:   e.company.status,
       role:             e.role,
       employee_number:  e.employeeNumber ?? null,
@@ -298,7 +314,7 @@ export async function getMyCompanyWallets(req: Request, res: Response) {
     ok(res, memberships.map((m) => ({
       company_id:            m.companyId,
       company_name:          m.company.name,
-      company_logo:          m.company.logoUrl ?? null,
+      company_logo:          picUrl(m.company.logoUrl),
       wallet_access_enabled: m.walletAccessEnabled,
       wallet_available_now:  m.walletAccessEnabled && isWithinTimeWindow({
         daysOfWeek: m.walletAccessDaysOfWeek,

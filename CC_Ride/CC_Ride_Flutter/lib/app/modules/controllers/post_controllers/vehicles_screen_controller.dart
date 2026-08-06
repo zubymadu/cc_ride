@@ -34,7 +34,11 @@ class VehiclesScreenController extends GetxController {
     update();
   }
 
-  PostTripController postTripController = Get.put(PostTripController());
+  // See multipolyline_map_screen_controller.dart — Get.put() on an
+  // already-registered type replaces it with a blank instance, wiping
+  // whatever's already been picked earlier in the post-trip flow.
+  PostTripController postTripController =
+      Get.isRegistered<PostTripController>() ? Get.find<PostTripController>() : Get.put(PostTripController());
 
   DataGetApiModel? dataGetApiModel;
 

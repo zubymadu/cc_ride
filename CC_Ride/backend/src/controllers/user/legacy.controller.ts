@@ -2772,6 +2772,16 @@ export async function legacyPaystackInit(req: Request, res: Response) {
 
     const settings = await prisma.platformSettings.findUnique({ where: { id: 1 } })
     const secretKey = settings?.paystackSecretKey || undefined
+    // Neither PlatformSettings nor the PAYSTACK_SECRET_KEY env var has a
+    // key configured — paystackInitialize() would throw a generic Error
+    // that got swallowed below into the same unhelpful message regardless
+    // of the actual cause (bad key vs no key vs Paystack itself down),
+    // making this impossible to diagnose from the app side alone.
+    if (!secretKey && !process.env.PAYSTACK_SECRET_KEY) {
+      console.error('legacyPaystackInit: no Paystack secret key configured (PlatformSettings.paystackSecretKey and PAYSTACK_SECRET_KEY env var both empty)')
+      res.json({ status: false, message: 'Card top-up is not configured yet — contact support.' })
+      return
+    }
 
     const reference = `CCR-WALLET-${userId}-${Date.now()}`
     const result = await paystackInitialize({
@@ -2792,6 +2802,10 @@ export async function legacyPaystackInit(req: Request, res: Response) {
       },
     })
   } catch (err) {
+    // Log the real reason (e.g. Paystack rejected the key, network error)
+    // server-side for diagnosis, but keep the client message generic —
+    // it may include Paystack's own error text which isn't meant for
+    // an end user.
     console.error('legacyPaystackInit:', err)
     res.json({ status: false, message: 'Unable to initiate Paystack payment' })
   }

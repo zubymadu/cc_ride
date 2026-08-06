@@ -96,7 +96,14 @@ class SeatsDetailsScreenController extends GetxController {
   //   super.onInit();
   // }
 
-  PostTripController postTripController = Get.put(PostTripController());
+  // See multipolyline_map_screen_controller.dart — Get.put() on an
+  // already-registered type replaces it with a blank instance, wiping
+  // whatever's already been picked earlier in the post-trip flow (this was
+  // silently breaking the live price-estimate hint on this exact screen,
+  // since a blank instance has empty origin/destination and the estimate
+  // call's guard clause bails out immediately).
+  PostTripController postTripController =
+      Get.isRegistered<PostTripController>() ? Get.find<PostTripController>() : Get.put(PostTripController());
 
   TextEditingController seatpricecontroller = TextEditingController();
   TextEditingController tripdescriptioncontroller = TextEditingController();

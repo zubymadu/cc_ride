@@ -1,3 +1,4 @@
+import 'package:carride/app/data/confing.dart';
 import 'package:carride/app/modules/view/booking_screen/payment_bottomsheert.dart';
 import 'package:carride/app/routes/app_pages.dart';
 import 'package:carride/utils/cc_ds.dart';
@@ -445,7 +446,14 @@ class _WalletCardState extends State<_WalletCard>
                         color: Colors.white.withOpacity(0.15),
                         child: (widget.logoUrl ?? '').isNotEmpty
                             ? Image.network(
-                                widget.logoUrl!,
+                                // Backend returns a relative "profiles/xxx"
+                                // path (or a full URL, left untouched) —
+                                // every other image in this app resolves it
+                                // via Confing.imageurl the same way (see
+                                // e.g. user_details.dart's profilePic usage).
+                                widget.logoUrl!.startsWith('http')
+                                    ? widget.logoUrl!
+                                    : '${Confing.imageurl}${widget.logoUrl}',
                                 fit: BoxFit.cover,
                                 errorBuilder: (_, __, ___) => const Icon(
                                     Icons.business_rounded,

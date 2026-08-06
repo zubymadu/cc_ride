@@ -37,7 +37,13 @@ void removeStopAt(int index) {
 
   // ====================== THEME & OTHER CONTROLLERS ======================
   final MapSuggetionControlle mapSuggetionControlle = Get.put(MapSuggetionControlle());
-  final PostTripController postTripController = Get.put(PostTripController());
+  // Get.put() on an already-registered type replaces the singleton with a
+  // blank instance, wiping whatever origin/destination/vehicle the rider
+  // has already picked earlier in the post-trip flow — reuse the existing
+  // instance across every step instead (same pattern used elsewhere in
+  // this codebase, e.g. TripPreviewScreenController in payment_screen_controller.dart).
+  final PostTripController postTripController =
+      Get.isRegistered<PostTripController>() ? Get.find<PostTripController>() : Get.put(PostTripController());
 
   // ====================== TEXT / FOCUS ======================
   final TextEditingController originController = TextEditingController();
