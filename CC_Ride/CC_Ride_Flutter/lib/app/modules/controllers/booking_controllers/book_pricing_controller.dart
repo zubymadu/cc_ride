@@ -78,8 +78,13 @@ class BookPricingController extends GetxController {
           .timeout(const Duration(seconds: 15));
       final data = jsonDecode(response.body);
       if (response.statusCode == 200 && data["Result"] == "true") {
-        final model = data["data"]?["pricing_model"] ?? 'driver_set';
-        estimatedFare = double.tryParse("${data["data"]?["estimated_fare"] ?? 0}") ?? 0;
+        // Same response-shape bug as PostTripController.estimateRouteFareApi
+        // — /estimate_fare.php's fields are flat at the top level, not
+        // nested under "data" (legacy.controller.ts defines its own local
+        // ok() that spreads rather than nests). This silently made
+        // hasEstimate false forever, same root cause, different call site.
+        final model = data["pricing_model"] ?? 'driver_set';
+        estimatedFare = double.tryParse("${data["estimated_fare"] ?? 0}") ?? 0;
         hasEstimate = model == 'platform_computed' && estimatedFare > 0;
         update();
       }

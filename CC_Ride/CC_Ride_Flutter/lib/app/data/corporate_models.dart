@@ -4,6 +4,7 @@
 
 class CorporateDashboardModel {
   final String companyName;
+  final String? companyLogo;
   final String companyId;
   final double monthlyBudget;
   final double monthlySpent;
@@ -17,6 +18,7 @@ class CorporateDashboardModel {
 
   CorporateDashboardModel({
     required this.companyName,
+    this.companyLogo,
     required this.companyId,
     required this.monthlyBudget,
     required this.monthlySpent,
@@ -32,6 +34,7 @@ class CorporateDashboardModel {
   factory CorporateDashboardModel.fromJson(Map<String, dynamic> json) {
     return CorporateDashboardModel(
       companyName: json['company_name'] ?? '',
+      companyLogo: json['company_logo'],
       companyId: json['company_id'] ?? '',
       monthlyBudget: double.tryParse('${json['monthly_budget']}') ?? 0,
       monthlySpent: double.tryParse('${json['monthly_spent']}') ?? 0,

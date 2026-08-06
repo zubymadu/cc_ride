@@ -3,6 +3,16 @@ import { prisma } from '../../lib/prisma'
 import { ok, serverError } from '../../lib/response'
 import { dec } from '../../lib/naira'
 
+// Same leading-slash strip as company-enrol.controller.ts's picUrl() — this
+// is the corporate console's own dashboard header, exactly where "each
+// participating company must have their logo displayed when they access
+// their console" was supposed to show it; it was never wired up at all.
+function picUrl(raw: string | null | undefined): string | null {
+  if (!raw) return null
+  if (raw.startsWith('http')) return raw
+  return raw.startsWith('/') ? raw.slice(1) : raw
+}
+
 export async function getDashboard(req: Request, res: Response) {
   try {
     const companyId = req.companyId!
@@ -20,7 +30,7 @@ export async function getDashboard(req: Request, res: Response) {
       activeBudgets,
       recentBookings,
     ] = await Promise.all([
-      prisma.company.findUnique({ where: { id: companyId }, select: { name: true } }),
+      prisma.company.findUnique({ where: { id: companyId }, select: { name: true, logoUrl: true } }),
 
       prisma.companyEmployee.count({ where: { companyId } }),
 
@@ -101,6 +111,7 @@ export async function getDashboard(req: Request, res: Response) {
 
     ok(res, {
       company_name:       company?.name ?? '',
+      company_logo:       picUrl(company?.logoUrl),
       company_id:         companyId,
       monthly_budget:     monthlyBudget,
       monthly_spent:      monthlySpent,

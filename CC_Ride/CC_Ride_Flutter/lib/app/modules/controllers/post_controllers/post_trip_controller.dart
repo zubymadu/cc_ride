@@ -174,8 +174,16 @@ class PostTripController extends GetxController {
           .timeout(const Duration(seconds: 15));
       final data = jsonDecode(response.body);
       if (response.statusCode == 200 && data["Result"] == "true") {
-        routeEstimatedFare = double.tryParse("${data["data"]?["estimated_fare"] ?? 0}") ?? 0;
-        routeDistanceKm = double.tryParse("${data["data"]?["distance_km"] ?? 0}") ?? 0;
+        // /estimate_fare.php is implemented in legacy.controller.ts, which
+        // defines its own local ok() that spreads fields onto the TOP LEVEL
+        // of the response ({Result, ResponseCode, ResponseMsg, ...data}) —
+        // unlike every endpoint built on the shared lib/response.ts helper,
+        // which nests under a "data" key. Reading data["data"]?[...] here
+        // silently returned null every time (a curl test against the real
+        // endpoint confirmed the actual shape), which is why this hint
+        // never showed no matter what else got fixed.
+        routeEstimatedFare = double.tryParse("${data["estimated_fare"] ?? 0}") ?? 0;
+        routeDistanceKm = double.tryParse("${data["distance_km"] ?? 0}") ?? 0;
         hasRouteEstimate = routeEstimatedFare > 0;
       } else {
         // Previously fell through silently here on any non-200/non-"true"

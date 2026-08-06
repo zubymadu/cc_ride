@@ -2803,11 +2803,18 @@ export async function legacyPaystackInit(req: Request, res: Response) {
     })
   } catch (err) {
     // Log the real reason (e.g. Paystack rejected the key, network error)
-    // server-side for diagnosis, but keep the client message generic —
-    // it may include Paystack's own error text which isn't meant for
-    // an end user.
+    // server-side for diagnosis. The client message stays generic for most
+    // failures (may echo Paystack's own error text, not meant for an end
+    // user) — but a 401/403 from Paystack itself specifically means our
+    // configured secret key is wrong/revoked, which is safe to say plainly
+    // and actionable (check Settings), rather than folding it into the same
+    // "unable to initiate" text as a transient network error.
     console.error('legacyPaystackInit:', err)
-    res.json({ status: false, message: 'Unable to initiate Paystack payment' })
+    const status = (err as { response?: { status?: number } })?.response?.status
+    const message = status === 401 || status === 403
+      ? 'Card top-up is temporarily unavailable — the payment provider rejected our credentials. Contact support.'
+      : 'Unable to initiate Paystack payment'
+    res.json({ status: false, message })
   }
 }
 

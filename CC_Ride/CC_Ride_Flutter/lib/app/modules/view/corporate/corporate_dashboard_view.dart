@@ -1,5 +1,6 @@
 // ignore_for_file: deprecated_member_use
 
+import 'package:carride/app/data/confing.dart';
 import 'package:carride/app/data/corporate_models.dart';
 import 'package:carride/app/modules/controllers/corporate_controllers/corporate_dashboard_controller.dart';
 import 'package:carride/utils/cc_ds.dart';
@@ -67,25 +68,52 @@ class CorporateDashboardView extends GetView<CorporateDashboardController> {
           icon: const Icon(Icons.arrow_back_rounded, color: ccNavyText),
           onPressed: () => Get.back(),
         ),
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              c.dashData?.companyName ?? 'Corporate Portal',
-              style: const TextStyle(
-                fontSize: 16,
-                fontFamily: 'Inter',
-                fontWeight: FontWeight.w700,
-                color: ccNavyText,
+            // The whole point of this — "each participating company must
+            // have their logo displayed when they access their console" —
+            // was never actually wired up on this screen; only the
+            // payment-time wallet-card picker got a logo, which a rider only
+            // sees mid-booking with wallet access, not just from opening
+            // their employer's console.
+            if ((c.dashData?.companyLogo ?? '').isNotEmpty) ...[
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.network(
+                  c.dashData!.companyLogo!.startsWith('http')
+                      ? c.dashData!.companyLogo!
+                      : '${Confing.imageurl}${c.dashData!.companyLogo}',
+                  width: 32,
+                  height: 32,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => const Icon(
+                      Icons.business_rounded, color: ccPrimary, size: 28),
+                ),
               ),
-            ),
-            Text(
-              DateFormat('MMMM yyyy').format(DateTime.now()),
-              style: const TextStyle(
-                fontSize: 12,
-                fontFamily: 'Inter',
-                color: ccSecondaryText,
-              ),
+              const SizedBox(width: 10),
+            ],
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  c.dashData?.companyName ?? 'Corporate Portal',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontFamily: 'Inter',
+                    fontWeight: FontWeight.w700,
+                    color: ccNavyText,
+                  ),
+                ),
+                Text(
+                  DateFormat('MMMM yyyy').format(DateTime.now()),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontFamily: 'Inter',
+                    color: ccSecondaryText,
+                  ),
+                ),
+              ],
             ),
           ],
         ),
