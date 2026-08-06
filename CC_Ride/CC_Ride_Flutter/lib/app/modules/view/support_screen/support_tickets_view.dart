@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../controllers/support_controllers/support_tickets_controller.dart';
-import '../../routes/app_pages.dart';
+import '../../../routes/app_pages.dart';
 
 class SupportTicketsView extends GetView<SupportTicketsController> {
   const SupportTicketsView({super.key});

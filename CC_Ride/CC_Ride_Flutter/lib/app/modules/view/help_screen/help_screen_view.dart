@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../controllers/help_controller/help_screen_controller.dart';
-import '../../routes/app_pages.dart';
+import '../../../routes/app_pages.dart';
 
 class HelpScreenView extends GetView<HelpScreenController> {
   const HelpScreenView({super.key});
