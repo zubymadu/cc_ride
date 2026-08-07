@@ -72,6 +72,8 @@ class Confing {
   static String findTrip = 'find_trip.php';
   static String findTripDetail = 'find_trip_detail.php';
   static String nearbyRoutes = 'nearby_routes.php';
+  static String nearbyPostedRides = 'nearby_posted_rides.php';
+  static String searchRidesByPlace = 'search_rides_by_place.php';
   static String driverRouteCreate = 'driver_route_create.php';
   static String driverRouteEdit = 'driver_route_edit.php';
   static String driverRouteList = 'driver_route_list.php';

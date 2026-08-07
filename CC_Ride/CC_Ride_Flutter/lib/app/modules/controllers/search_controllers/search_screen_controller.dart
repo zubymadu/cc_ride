@@ -152,6 +152,92 @@ class SearchScreenController extends GetxController {
     }
   }
 
+  // ======================  NEARBY POSTED (ONE-OFF) RIDES  ======================
+  // fetchNearbyRoutes above only ever covers recurring driver-published
+  // Route corridors — an ordinary one-off ride from "Post a Trip" never
+  // showed up on the home screen at all, no matter how close it was.
+  final RxList<NearbyPostedRide> _nearbyPostedRides = <NearbyPostedRide>[].obs;
+  List<NearbyPostedRide> get nearbyPostedRides => _nearbyPostedRides;
+
+  final RxBool _nearbyPostedRidesLoading = false.obs;
+  bool get nearbyPostedRidesLoading => _nearbyPostedRidesLoading.value;
+  set nearbyPostedRidesLoading(bool value) => _nearbyPostedRidesLoading.value = value;
+
+  Future<void> fetchNearbyPostedRides({required double lat, required double lng}) async {
+    nearbyPostedRidesLoading = true;
+    update();
+    try {
+      final response = await http.post(
+        Uri.parse(Confing.baseurl + Confing.nearbyPostedRides),
+        headers: const {"Content-type": "application/json", "Accept": "application/json"},
+        body: jsonEncode({"lat": lat, "lng": lng}),
+      );
+      final data = jsonDecode(response.body);
+      if (data["Result"] == "true") {
+        final list = (data["Data"] as List? ?? [])
+            .map((e) => NearbyPostedRide.fromJson(e))
+            .toList();
+        _nearbyPostedRides.assignAll(list);
+      }
+    } catch (e) {
+      log(name: "fetchNearbyPostedRides error", "$e");
+    } finally {
+      nearbyPostedRidesLoading = false;
+      update();
+    }
+  }
+
+  // ======================  SEARCH POSTED RIDES BY PLACE  ======================
+  // "Search rides in Abuja" — free-text alternative to the coordinate-only
+  // corridor matching in find-trip, for browsing what's live in a place
+  // generally rather than one specific origin→destination pair.
+  final RxList<NearbyPostedRide> _placeSearchResults = <NearbyPostedRide>[].obs;
+  List<NearbyPostedRide> get placeSearchResults => _placeSearchResults;
+
+  final RxBool _placeSearchLoading = false.obs;
+  bool get placeSearchLoading => _placeSearchLoading.value;
+  set placeSearchLoading(bool value) => _placeSearchLoading.value = value;
+
+  final RxBool _placeSearchActive = false.obs;
+  bool get placeSearchActive => _placeSearchActive.value;
+
+  Future<void> searchRidesByPlace(String query) async {
+    if (query.trim().length < 2) {
+      _placeSearchActive.value = false;
+      _placeSearchResults.clear();
+      update();
+      return;
+    }
+    _placeSearchActive.value = true;
+    placeSearchLoading = true;
+    update();
+    try {
+      final response = await http.post(
+        Uri.parse(Confing.baseurl + Confing.searchRidesByPlace),
+        headers: const {"Content-type": "application/json", "Accept": "application/json"},
+        body: jsonEncode({"query": query.trim()}),
+      );
+      final data = jsonDecode(response.body);
+      if (data["Result"] == "true") {
+        final list = (data["Data"] as List? ?? [])
+            .map((e) => NearbyPostedRide.fromJson(e))
+            .toList();
+        _placeSearchResults.assignAll(list);
+      }
+    } catch (e) {
+      log(name: "searchRidesByPlace error", "$e");
+    } finally {
+      placeSearchLoading = false;
+      update();
+    }
+  }
+
+  void clearPlaceSearch() {
+    _placeSearchActive.value = false;
+    _placeSearchResults.clear();
+    update();
+  }
+
   // =======================  SAFE IMAGE LOADER  =====================
   Future<Uint8List?> getBytesFromAsset(String path, double size) async {
     try {
@@ -267,6 +353,7 @@ class SearchScreenController extends GetxController {
         }
       } catch (_) {}
       fetchNearbyRoutes(lat: currentLat, lng: currentLong);
+      fetchNearbyPostedRides(lat: currentLat, lng: currentLong);
     } catch (e) {
       Get.snackbar("Error", "Failed to get location");
     }
@@ -668,5 +755,54 @@ class NearbyRoute {
         nextDeparture: '${json["next_departure"]}',
         seatPrice: '${json["seat_price"]}',
         isServiced: json["is_serviced"] != false,
+      );
+}
+
+// A one-off ride posted via "Post a Trip" (not tied to a recurring Route) —
+// used for both the home-screen "nearby posted rides" feed and free-text
+// place search results, hence distanceKm is nullable (place search has no
+// reference point to measure distance from).
+class NearbyPostedRide {
+  final String tripId;
+  final String originAddress;
+  final double originLat;
+  final double originLong;
+  final String destinationAddress;
+  final double destinationLat;
+  final double destinationLong;
+  final double? distanceKm;
+  final String tripStartDate;
+  final String tripStartTime;
+  final String seatPrice;
+  final int availableSeats;
+
+  NearbyPostedRide({
+    required this.tripId,
+    required this.originAddress,
+    required this.originLat,
+    required this.originLong,
+    required this.destinationAddress,
+    required this.destinationLat,
+    required this.destinationLong,
+    required this.distanceKm,
+    required this.tripStartDate,
+    required this.tripStartTime,
+    required this.seatPrice,
+    required this.availableSeats,
+  });
+
+  factory NearbyPostedRide.fromJson(Map<String, dynamic> json) => NearbyPostedRide(
+        tripId: '${json["trip_id"]}',
+        originAddress: '${json["origin_address"]}',
+        originLat: double.tryParse('${json["origin_lat"]}') ?? 0,
+        originLong: double.tryParse('${json["origin_long"]}') ?? 0,
+        destinationAddress: '${json["destination_address"]}',
+        destinationLat: double.tryParse('${json["destination_lat"]}') ?? 0,
+        destinationLong: double.tryParse('${json["destination_long"]}') ?? 0,
+        distanceKm: json["distance_km"] != null ? double.tryParse('${json["distance_km"]}') : null,
+        tripStartDate: '${json["trip_start_date"]}',
+        tripStartTime: '${json["trip_start_time"]}',
+        seatPrice: '${json["seat_price"]}',
+        availableSeats: int.tryParse('${json["available_seats"]}') ?? 0,
       );
 }

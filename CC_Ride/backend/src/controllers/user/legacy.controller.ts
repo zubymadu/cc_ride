@@ -186,7 +186,7 @@ export async function legacyLogin(req: Request, res: Response) {
         companyMemberships: {
           where: { isActive: true },
           take: 1,
-          include: { company: { select: { name: true } } },
+          include: { company: { select: { name: true, logoUrl: true } } },
         },
       },
     })
@@ -207,6 +207,7 @@ export async function legacyLogin(req: Request, res: Response) {
       // Surfaced so the app can show a "Welcome — Pool Driver at {company}"
       // banner and the required company employee ID once in pool mode.
       company_name:     membership?.company.name ?? null,
+      company_logo:     picUrl(membership?.company.logoUrl),
       employee_number:  membership?.employeeNumber ?? null,
       UserLogin: userLoginShape(user),
     })
@@ -1167,6 +1168,97 @@ export async function legacyNearbyRoutes(req: Request, res: Response) {
     })
   } catch (err) {
     console.error('legacyNearbyRoutes:', err); fail(res, 'Server error')
+  }
+}
+
+// ─── NEARBY POSTED RIDES ────────────────────────────────────────────────────
+// legacyNearbyRoutes above only ever covers recurring, driver-published
+// Route corridors — a one-off ride posted through the ordinary "Post a
+// Trip" flow (routeId null) never showed up anywhere on the home screen at
+// all, regardless of how close it was. Same radius/live-status shape as
+// nearby routes, scoped to ad-hoc rides instead of route occurrences.
+function ridePreviewShape(r: {
+  id: string; originAddress: string; originLat: any; originLng: any
+  destinationAddress: string; destinationLat: any; destinationLng: any
+  scheduledAt: Date; baseFare: any; availableSeats: number
+}, distance: number | null) {
+  return {
+    trip_id:           r.id,
+    origin_address:    r.originAddress,
+    origin_lat:        Number(r.originLat),
+    origin_long:        Number(r.originLng),
+    destination_address: r.destinationAddress,
+    destination_lat:   Number(r.destinationLat),
+    destination_long:  Number(r.destinationLng),
+    // Only meaningful when searched from a known point (nearby feed) — a
+    // place-name search has no reference point to measure from.
+    distance_km:        distance != null ? Number(distance.toFixed(1)) : null,
+    trip_start_date:   r.scheduledAt.toISOString().slice(0, 10),
+    trip_start_time:   r.scheduledAt.toISOString().slice(11, 16),
+    seat_price:         String(Number(r.baseFare)),
+    available_seats:   r.availableSeats,
+  }
+}
+
+export async function legacyNearbyPostedRides(req: Request, res: Response) {
+  try {
+    const lat = parseFloat(String(req.body.lat ?? req.query.lat))
+    const lng = parseFloat(String(req.body.lng ?? req.query.lng))
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) { fail(res, 'lat and lng required'); return }
+
+    const rides = await prisma.ride.findMany({
+      where: {
+        routeId: null,
+        status: { in: ['pending', 'driver_assigned'] },
+        scheduledAt: { gte: new Date() },
+        availableSeats: { gt: 0 },
+      },
+      take: 200, // filtered down by radius below; a generous pre-filter cap
+    })
+
+    const nearby = rides
+      .map(r => ({ ride: r, distance: distanceKm(lat, lng, Number(r.originLat), Number(r.originLng)) }))
+      .filter(c => c.distance <= NEARBY_ROUTES_RADIUS_KM)
+      .sort((a, b) => a.distance - b.distance)
+      .slice(0, 15)
+
+    ok(res, { Data: nearby.map(({ ride, distance }) => ridePreviewShape(ride, distance)) })
+  } catch (err) {
+    console.error('legacyNearbyPostedRides:', err); fail(res, 'Server error')
+  }
+}
+
+// ─── SEARCH POSTED RIDES BY PLACE NAME ──────────────────────────────────────
+// "Search for rides in Abuja" — a free-text alternative to the coordinate-
+// only corridor matching in legacyFindTrip, for browsing what's live in a
+// city/state generally rather than matching one specific origin→destination
+// pair. Matches against the stored address text (Nigerian addresses
+// routinely carry the city/state as free text, e.g. "Wuse, Abuja"), not
+// geocoding — no external API dependency, and good enough for "does this
+// ride touch this place at all".
+export async function legacySearchRidesByPlace(req: Request, res: Response) {
+  try {
+    const query = String(req.body.query ?? req.query.query ?? '').trim()
+    if (query.length < 2) { fail(res, 'query must be at least 2 characters'); return }
+
+    const rides = await prisma.ride.findMany({
+      where: {
+        routeId: null,
+        status: { in: ['pending', 'driver_assigned'] },
+        scheduledAt: { gte: new Date() },
+        availableSeats: { gt: 0 },
+        OR: [
+          { originAddress:      { contains: query, mode: 'insensitive' } },
+          { destinationAddress: { contains: query, mode: 'insensitive' } },
+        ],
+      },
+      orderBy: { scheduledAt: 'asc' },
+      take: 30,
+    })
+
+    ok(res, { Data: rides.map(r => ridePreviewShape(r, null)) })
+  } catch (err) {
+    console.error('legacySearchRidesByPlace:', err); fail(res, 'Server error')
   }
 }
 
@@ -3272,6 +3364,26 @@ export async function legacyEditPostTrip(req: Request, res: Response) {
       total_seat, seat_price, vehicle_id,
     } = req.body
     if (!trip_id) { fail(res, 'trip_id required'); return }
+
+    // The app's own trip-preview screen already hides the Edit button once
+    // bookedUsers is non-empty, but that's a client-side convenience only —
+    // nothing here ever stopped a direct API call from editing a ride with
+    // real passenger bookings (wrong departure time/place/price out from
+    // under someone who already committed to it), or one that's already
+    // underway/finished/cancelled. Same two checks legacyDeactivateDriverRoute
+    // and cancelTrip already apply elsewhere in this file.
+    const ride = await prisma.ride.findFirst({ where: { id: String(trip_id), driverId: userId } })
+    if (!ride) { fail(res, 'Trip not found'); return }
+    if (!['pending', 'driver_assigned'].includes(ride.status)) {
+      fail(res, 'This trip has already started or ended and can no longer be edited'); return
+    }
+    const activeBooking = await prisma.booking.findFirst({
+      where: { rideId: String(trip_id), status: { in: ['pending', 'confirmed', 'processing', 'in_progress'] } },
+    })
+    if (activeBooking) {
+      fail(res, 'This trip already has passengers booked and can no longer be edited'); return
+    }
+
     const scheduledAt = trip_start_date
       ? new Date(`${trip_start_date}T${trip_start_time || '08:00'}:00`)
       : undefined

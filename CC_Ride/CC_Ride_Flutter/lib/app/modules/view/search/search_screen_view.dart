@@ -1,5 +1,7 @@
 // ignore_for_file: deprecated_member_use
 
+import 'dart:async';
+
 import 'package:carride/app/data/chat_notification.dart';
 import 'package:carride/app/data/confing.dart';
 import 'package:carride/app/data/data_store.dart';
@@ -97,10 +99,18 @@ class SearchScreenView extends GetView<SearchScreenController> {
                       const _QuickActionsGrid(),
                       const SizedBox(height: 24),
 
-                      _NearbySharedRoutes(controller: controller),
+                      _RideSearchBar(controller: controller),
+                      const SizedBox(height: 12),
 
-                      // Recent Places
-                      _RecentPlaces(controller: controller),
+                      if (controller.placeSearchActive) ...[
+                        _PlaceSearchResults(controller: controller),
+                      ] else ...[
+                        _NearbySharedRoutes(controller: controller),
+                        _NearbyPostedRides(controller: controller),
+
+                        // Recent Places
+                        _RecentPlaces(controller: controller),
+                      ],
                     ],
                   ),
                 ),
@@ -719,6 +729,246 @@ class _NearbyRouteCard extends StatelessWidget {
                 if (route.seatPrice.isNotEmpty)
                   Text(
                     "$currency ${route.seatPrice}",
+                    style: const TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: ccPrimary,
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Ride search bar (free-text place search) ────────────────────────────────
+
+class _RideSearchBar extends StatefulWidget {
+  const _RideSearchBar({required this.controller});
+  final SearchScreenController controller;
+
+  @override
+  State<_RideSearchBar> createState() => _RideSearchBarState();
+}
+
+class _RideSearchBarState extends State<_RideSearchBar> {
+  final _textController = TextEditingController();
+  Timer? _debounce;
+
+  @override
+  void dispose() {
+    _textController.dispose();
+    _debounce?.cancel();
+    super.dispose();
+  }
+
+  void _onChanged(String value) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 400), () {
+      widget.controller.searchRidesByPlace(value);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: _textController,
+      onChanged: _onChanged,
+      style: const TextStyle(fontFamily: 'Inter', color: ccNavyText),
+      decoration: InputDecoration(
+        hintText: "Search rides by city, e.g. Abuja".tr,
+        hintStyle: const TextStyle(fontFamily: 'Inter', color: ccSecondaryText),
+        prefixIcon: const Icon(Icons.search_rounded, color: ccSecondaryText),
+        suffixIcon: _textController.text.isNotEmpty
+            ? IconButton(
+                icon: const Icon(Icons.close_rounded, color: ccSecondaryText, size: 18),
+                onPressed: () {
+                  _textController.clear();
+                  widget.controller.clearPlaceSearch();
+                  setState(() {});
+                },
+              )
+            : null,
+        filled: true,
+        fillColor: ccSurface,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(CCRadius.input),
+          borderSide: const BorderSide(color: ccInputBorder),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(CCRadius.input),
+          borderSide: const BorderSide(color: ccInputBorder),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(CCRadius.input),
+          borderSide: const BorderSide(color: ccPrimary, width: 1.5),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Place search results ─────────────────────────────────────────────────────
+
+class _PlaceSearchResults extends StatelessWidget {
+  const _PlaceSearchResults({required this.controller});
+  final SearchScreenController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    if (controller.placeSearchLoading && controller.placeSearchResults.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.only(top: 20),
+        child: Center(child: CircularProgressIndicator(color: ccPrimary)),
+      );
+    }
+    if (controller.placeSearchResults.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 20, bottom: 24),
+        child: Text(
+          "No live rides found for that search yet.".tr,
+          style: CCText.bodyMd.copyWith(color: ccSecondaryText),
+        ),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final ride in controller.placeSearchResults) ...[
+            _NearbyPostedRideCard(ride: ride, fullWidth: true),
+            const SizedBox(height: 10),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// ── Nearby posted (one-off) rides ────────────────────────────────────────────
+
+class _NearbyPostedRides extends StatelessWidget {
+  const _NearbyPostedRides({required this.controller});
+  final SearchScreenController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    if (controller.nearbyPostedRidesLoading && controller.nearbyPostedRides.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    if (controller.nearbyPostedRides.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text("Rides near you", style: CCText.titleMd),
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 128,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              itemCount: controller.nearbyPostedRides.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 10),
+              itemBuilder: (_, i) => _NearbyPostedRideCard(
+                ride: controller.nearbyPostedRides[i],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NearbyPostedRideCard extends StatelessWidget {
+  const _NearbyPostedRideCard({required this.ride, this.fullWidth = false});
+  final NearbyPostedRide ride;
+  // Place-search results render as a full-width vertical list instead of the
+  // fixed-width horizontal cards the home-screen nearby feed uses.
+  final bool fullWidth;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        // A posted ride is a specific, already-bookable instance (unlike a
+        // Route corridor, which just describes a recurring path) — go
+        // straight to the same trip-preview/booking screen tapping a
+        // find-trip search result uses, instead of the trip-planning form.
+        Get.toNamed(Routes.TRIP_PREVIEW_SCREEN, arguments: {
+          "tripId": ride.tripId,
+          "findtrip": true,
+        });
+      },
+      child: Container(
+        width: fullWidth ? double.infinity : 210,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: ccSurface,
+          borderRadius: BorderRadius.circular(CCRadius.card),
+          boxShadow: CCShadow.card,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: ccIceBlue,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    "${ride.availableSeats} ${ride.availableSeats == 1 ? 'seat' : 'seats'}".tr,
+                    style: const TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: ccPrimary,
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                if (ride.distanceKm != null)
+                  Text(
+                    "${ride.distanceKm!.toStringAsFixed(1)} km",
+                    style: CCText.labelSm.copyWith(color: ccSecondaryText),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              "${ride.originAddress.split(',').first} → ${ride.destinationAddress.split(',').first}",
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: ccNavyText,
+              ),
+            ),
+            const Spacer(),
+            Row(
+              children: [
+                const Icon(Icons.schedule_rounded, size: 13, color: ccSecondaryText),
+                const SizedBox(width: 4),
+                Text("${ride.tripStartDate} · ${ride.tripStartTime}",
+                    style: CCText.labelSm.copyWith(color: ccSecondaryText)),
+                const Spacer(),
+                if (ride.seatPrice.isNotEmpty)
+                  Text(
+                    "$currency ${ride.seatPrice}",
                     style: const TextStyle(
                       fontFamily: 'Inter',
                       fontSize: 13,

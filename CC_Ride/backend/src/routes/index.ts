@@ -12,6 +12,7 @@ import {
   legacyUserProfile, legacyProfileEdit, legacyProImage,
   legacyVehicleList, legacyAddVehicle, legacyEditVehicle,
   legacyFindTrip, legacyFindTripDetail, legacyNearbyRoutes,
+  legacyNearbyPostedRides, legacySearchRidesByPlace,
   legacyCreateDriverRoute, legacyEditDriverRoute, legacyMyDriverRoutes, legacyDeactivateDriverRoute,
   legacyNearbyRequestsForRoute, legacyEstimateFare,
   legacyPostTrip, legacyEditPostTrip, legacyCancelTrip,
@@ -105,6 +106,8 @@ router.post('/complete_trip.php',   requireAuth, legacyCompleteTrip)
 // ─── Trip finding (passenger — guest-browsable, personalizes when logged in) ─
 router.post('/find_trip.php',       optionalAuth, legacyFindTrip)
 router.post('/nearby_routes.php',   legacyNearbyRoutes)  // public — home screen widget
+router.post('/nearby_posted_rides.php', legacyNearbyPostedRides)  // public — home screen widget
+router.post('/search_rides_by_place.php', legacySearchRidesByPlace)  // public — free-text city/place search
 
 // ─── Driver-created routes ────────────────────────────────────────────────────
 router.post('/driver_route_create.php',     requireAuth, legacyCreateDriverRoute)
