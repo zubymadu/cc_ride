@@ -61,28 +61,52 @@ class PaymentScreenView extends GetView<PaymentScreenController> {
                         // and could disagree with it for no reason relevant
                         // to wallet-payment eligibility specifically.
                         final bookingOnCorpAccount = c.selectedCompanyId.value != null;
-                        return CCButton(
-                          label: bookingOnCorpAccount
-                              ? "Book on Company Account"
-                              : "Proceed to Payment",
-                          onPressed: () {
-                            c.paymentId = "0";
-                            if (c.messageController.text.isNotEmpty) {
-                              if (bookingOnCorpAccount) {
-                                Get.toNamed(Routes.CORPORATE_BOOKING_CONFIRM);
-                                return;
-                              }
-                              if (c.bookPricingController.totalAmount == 0) {
-                                c.bookSeat(transactionID: "");
-                              } else {
-                                payBottomsheet(
-                                    totalAmt:
-                                        "${c.bookPricingController.totalAmount}");
-                              }
-                            } else {
-                              showToastMessage("Please enter a message".tr);
-                            }
-                          },
+                        return Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // Having company-wallet access shouldn't lock a
+                            // rider into it — the only way back to a personal
+                            // payment method was tapping the wallet toggle
+                            // above and knowing that would deselect the
+                            // company card. Make that explicit here instead.
+                            if (bookingOnCorpAccount) ...[
+                              GestureDetector(
+                                onTap: () => c.selectCompanyWallet(null),
+                                child: Padding(
+                                  padding: const EdgeInsets.only(bottom: 10),
+                                  child: Text(
+                                    "Pay with card or personal wallet instead".tr,
+                                    style: CCText.bodyMd.copyWith(
+                                        color: ccPrimary,
+                                        fontWeight: FontWeight.w600),
+                                  ),
+                                ),
+                              ),
+                            ],
+                            CCButton(
+                              label: bookingOnCorpAccount
+                                  ? "Book on Company Account"
+                                  : "Proceed to Payment",
+                              onPressed: () {
+                                c.paymentId = "0";
+                                if (c.messageController.text.isNotEmpty) {
+                                  if (bookingOnCorpAccount) {
+                                    Get.toNamed(Routes.CORPORATE_BOOKING_CONFIRM);
+                                    return;
+                                  }
+                                  if (c.bookPricingController.totalAmount == 0) {
+                                    c.bookSeat(transactionID: "");
+                                  } else {
+                                    payBottomsheet(
+                                        totalAmt:
+                                            "${c.bookPricingController.totalAmount}");
+                                  }
+                                } else {
+                                  showToastMessage("Please enter a message".tr);
+                                }
+                              },
+                            ),
+                          ],
                         );
                       }),
                     ),

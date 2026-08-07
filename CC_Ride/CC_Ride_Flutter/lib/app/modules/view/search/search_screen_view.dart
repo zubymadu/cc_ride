@@ -99,6 +99,19 @@ class SearchScreenView extends GetView<SearchScreenController> {
                       const _QuickActionsGrid(),
                       const SizedBox(height: 24),
 
+                      // Deliberately labeled and visually separated from the
+                      // "Where to?" destination field above (_DestinationField)
+                      // — both are text inputs on the same screen with easily
+                      // confusable purposes: that one is Google Places
+                      // autocomplete for planning a specific A→B trip, this
+                      // one lists already-posted, bookable rides touching a
+                      // place name. Reports of "searched Abuja, got nothing"
+                      // traced to no bug in the search itself (verified live
+                      // against the backend) — the far more likely cause is
+                      // typing into the wrong field, which an unlabeled
+                      // lookalike search box further down the page invited.
+                      const Text("Search posted rides", style: CCText.titleMd),
+                      const SizedBox(height: 8),
                       _RideSearchBar(controller: controller),
                       const SizedBox(height: 12),
 
@@ -963,10 +976,23 @@ class _NearbyPostedRideCard extends StatelessWidget {
               children: [
                 const Icon(Icons.schedule_rounded, size: 13, color: ccSecondaryText),
                 const SizedBox(width: 4),
-                Text("${ride.tripStartDate} · ${ride.tripStartTime}",
-                    style: CCText.labelSm.copyWith(color: ccSecondaryText)),
-                const Spacer(),
-                if (ride.seatPrice.isNotEmpty)
+                // Neither this nor the price Text was ever bounded — with
+                // both competing for a fixed 210px card width and only a
+                // Spacer between them, a longer date/time string plus a
+                // multi-digit price (e.g. "₦ 543600") reliably overflowed.
+                // Expanded lets the date shrink/ellipsize first, so price
+                // (the more important figure to a passenger) never gets
+                // squeezed or clipped.
+                Expanded(
+                  child: Text(
+                    "${ride.tripStartDate} · ${ride.tripStartTime}",
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: CCText.labelSm.copyWith(color: ccSecondaryText),
+                  ),
+                ),
+                if (ride.seatPrice.isNotEmpty) ...[
+                  const SizedBox(width: 6),
                   Text(
                     "$currency ${ride.seatPrice}",
                     style: const TextStyle(
@@ -976,6 +1002,7 @@ class _NearbyPostedRideCard extends StatelessWidget {
                       color: ccPrimary,
                     ),
                   ),
+                ],
               ],
             ),
           ],

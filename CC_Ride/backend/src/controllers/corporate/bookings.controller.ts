@@ -7,6 +7,18 @@ import { computeFareSplit } from '../../lib/pricingService'
 import { checkPoolRideEligibility, checkWalletPaymentEligibility } from '../../lib/poolAccessService'
 import crypto from 'crypto'
 
+// RideReceipt.receiptNumber is a required, UNIQUE column — this was
+// previously hardcoded to '' with a comment claiming "trigger fills this",
+// but no such DB trigger or default expression exists anywhere in the
+// migrations. The first booking ever made would succeed (nothing to
+// conflict with yet); every booking after that would violate the unique
+// constraint and throw exactly the "invalid tx.rideReceipt.create()" error
+// this was built to diagnose. Same short-code convention as genRouteCode()
+// in legacy.controller.ts.
+function genReceiptNumber(): string {
+  return `RCPT-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`
+}
+
 // ─── POST /corporate/bookings/check-policy ────────────────────────────────────
 //
 // Validates a pending ride against the company's active ride policies.
@@ -391,7 +403,7 @@ export async function createCorporateBooking(req: Request, res: Response) {
           totalCharged:      data.total_amount,
           originAddress:     ride.originAddress,
           destinationAddress: ride.destinationAddress,
-          receiptNumber:     '', // trigger fills this
+          receiptNumber:     genReceiptNumber(),
         },
       })
 

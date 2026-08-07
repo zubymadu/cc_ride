@@ -123,6 +123,7 @@ class LoginScreenController extends GetxController with GetSingleTickerProviderS
           save("token", data["token"] ?? "");
           save("companyId", data["company_id"] ?? "");
           save("companyName", data["company_name"] ?? "");
+          save("companyLogo", data["company_logo"] ?? "");
           save("employeeNumber", data["employee_number"] ?? "");
           save("isUserLogin", true);
           authService.firebaseStoreData(

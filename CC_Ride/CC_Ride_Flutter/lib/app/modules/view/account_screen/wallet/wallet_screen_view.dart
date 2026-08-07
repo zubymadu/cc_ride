@@ -241,8 +241,15 @@ class _WalletCard extends StatelessWidget {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // This card only ever shows controller.walletReportApiModel's
+              // PERSONAL wallet balance — it never carries any real company
+              // data — but was unconditionally labeled "Corporate Wallet"
+              // regardless of whether the signed-in user has any company
+              // affiliation at all. A user's actual company wallet, when
+              // they have access to one, is chosen from the animated wallet
+              // cards on the payment screen instead, not here.
               const Text(
-                "Corporate Wallet",
+                "My Wallet",
                 style: TextStyle(
                   fontFamily: 'Inter',
                   fontSize: 12,

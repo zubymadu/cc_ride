@@ -271,7 +271,17 @@ class CorporateBookingFlowController extends GetxController {
         'subtotal': '${pricing.subTotal}',
         'total_amount': '${pricing.totalAmount}',
         'cou_amt': '${pricing.couponAmount}',
-        'wall_amt': '${pricing.useWalletAmount}',
+        // pricing.useWalletAmount tracks the PERSONAL wallet toggle from
+        // the payment screen — and PaymentScreenController.selectCompanyWallet
+        // explicitly zeroes it (walletCalculation(false)) the moment a
+        // company wallet card is selected. Sending it here meant wall_amt
+        // was always "0" on every corporate booking, so
+        // createCorporateBooking's `if (wall_amt > 0)` debit block never
+        // ran — "Book on Company Account" created a real, successful
+        // booking but never actually charged the company wallet. The whole
+        // point of this flow is charging the full fare to the company, so
+        // that's what belongs here.
+        'wall_amt': '${pricing.totalAmount}',
         'driver_alert_info': messageController.text.trim(),
         'booking_fees': '${pricing.bookfee}',
         // Corporate metadata

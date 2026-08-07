@@ -145,13 +145,25 @@ class VehiclesListView extends GetView<VehiclesListController> {
                                           crossAxisAlignment:
                                               CrossAxisAlignment.start,
                                           children: [
+                                            // modelTitle had no overflow
+                                            // guard at all — a long vehicle
+                                            // model name would wrap onto
+                                            // multiple lines instead of
+                                            // truncating, pushing the rest of
+                                            // the card's content down out of
+                                            // alignment with the fixed
+                                            // 90x90 photo beside it (the
+                                            // "doesn't render well" symptom).
                                             Text(
                                               "${v.modelTitle}",
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
                                               style: CCText.titleMd,
                                             ),
                                             const SizedBox(height: 4),
                                             Text(
                                               "${v.year} · ${v.colorTitle} · ${v.typeTitle}",
+                                              maxLines: 1,
                                               overflow:
                                                   TextOverflow.ellipsis,
                                               style: CCText.bodyMd.copyWith(
