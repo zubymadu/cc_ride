@@ -12,18 +12,37 @@ import 'package:http/http.dart' as http;
 class SeatsDetailsScreenController extends GetxController {
   ThemeColores themeColores = Get.put(ThemeColores());
 
+  // A pool driver drives their organisation's car for organisation points,
+  // never cash — DriverModeController persists this choice to 'driverMode'
+  // the moment they pick "Pool driver" at the mode prompt. Pricing still
+  // gets computed server-side (computeFareSplit) purely for analytics/
+  // savings reporting, but there is no passenger-facing price for a pool
+  // driver to set, so the whole price UI is suppressed for them rather than
+  // just being pre-filled or disabled.
+  bool get isPoolDriverMode => getData.read('driverMode') == 'pool';
+
   @override
   void onInit() {
-    WidgetsBinding.instance.addPostFrameCallback((_) => estimateFareApi());
-    // A single onInit-time fetch can run before the map screen has actually
-    // written origin/destination/vehicle into postTripController, silently
-    // leaving hasEstimate stuck at false for the rest of this screen's
-    // lifetime (the catch block never surfaces a retry). Re-fetching
-    // whenever any of these three actually change makes the estimate
-    // self-correct regardless of navigation timing.
-    ever(postTripController.originLatRx, (_) => estimateFareApi());
-    ever(postTripController.destiLatRx, (_) => estimateFareApi());
-    ever(postTripController.vehicleIdRx, (_) => estimateFareApi());
+    if (isPoolDriverMode) {
+      // No price UI for a pool driver at all, so there's nothing for an
+      // estimate to inform — skip the fetch entirely. The price field
+      // itself is hidden in the view, but posttripApi's request body still
+      // has a seat_price key, and the form validator would otherwise block
+      // submission on an empty price the driver is never shown.
+      postTripController.seatPrice = "0";
+      seatpricecontroller.text = "0";
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) => estimateFareApi());
+      // A single onInit-time fetch can run before the map screen has
+      // actually written origin/destination/vehicle into postTripController,
+      // silently leaving hasEstimate stuck at false for the rest of this
+      // screen's lifetime (the catch block never surfaces a retry).
+      // Re-fetching whenever any of these three actually change makes the
+      // estimate self-correct regardless of navigation timing.
+      ever(postTripController.originLatRx, (_) => estimateFareApi());
+      ever(postTripController.destiLatRx, (_) => estimateFareApi());
+      ever(postTripController.vehicleIdRx, (_) => estimateFareApi());
+    }
     super.onInit();
   }
 
@@ -63,8 +82,11 @@ class SeatsDetailsScreenController extends GetxController {
       log(name: "=========== Estimate Fare response ===========", response.body);
       final data = jsonDecode(response.body);
       if (response.statusCode == 200 && data["Result"] == "true") {
-        pricingModel = data["data"]?["pricing_model"] ?? 'driver_set';
-        estimatedFare = double.tryParse("${data["data"]?["estimated_fare"] ?? 0}") ?? 0;
+        // Same response-shape bug as the other three estimate_fare.php call
+        // sites in this app — fields are flat at the top level, confirmed
+        // via direct curl against the live endpoint.
+        pricingModel = data["pricing_model"] ?? 'driver_set';
+        estimatedFare = double.tryParse("${data["estimated_fare"] ?? 0}") ?? 0;
         hasEstimate = pricingModel == 'platform_computed' && estimatedFare > 0;
       }
     } catch (e) {

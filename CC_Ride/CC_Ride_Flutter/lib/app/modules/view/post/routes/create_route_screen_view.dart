@@ -229,31 +229,47 @@ class CreateRouteScreenView extends GetView<CreateRouteController> {
                 )),
 
             const SizedBox(height: 20),
-            Row(
-              children: [
-                Expanded(
-                  child: customTextFormField(
-                    hintText: "Seats",
-                    title: "Seat capacity",
-                    controller: c.seatController,
-                    keyboardType: TextInputType.number,
+            Obx(() {
+              // A pool driver drives their organisation's car for
+              // organisation points, never cash — no passenger-facing price
+              // for them to see or set, only a behind-the-scenes
+              // computation for analytics.
+              if (c.isPoolDriverMode.value) {
+                return customTextFormField(
+                  hintText: "Seats",
+                  title: "Seat capacity",
+                  controller: c.seatController,
+                  keyboardType: TextInputType.number,
+                );
+              }
+              return Row(
+                children: [
+                  Expanded(
+                    child: customTextFormField(
+                      hintText: "Seats",
+                      title: "Seat capacity",
+                      controller: c.seatController,
+                      keyboardType: TextInputType.number,
+                    ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: customTextFormField(
-                    hintText: "0.00",
-                    title: "Seat price",
-                    controller: c.fareController,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: customTextFormField(
+                      hintText: "0.00",
+                      title: "Seat price",
+                      controller: c.fareController,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                    ),
                   ),
-                ),
-              ],
-            ),
+                ],
+              );
+            }),
 
             Obx(() {
-              if (!c.hasEstimate.value) return const SizedBox.shrink();
+              if (c.isPoolDriverMode.value || !c.hasEstimate.value) {
+                return const SizedBox.shrink();
+              }
               return Padding(
                 padding: const EdgeInsets.only(top: 10),
                 child: Container(

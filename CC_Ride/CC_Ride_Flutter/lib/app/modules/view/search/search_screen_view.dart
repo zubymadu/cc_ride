@@ -23,9 +23,15 @@ class SearchScreenView extends GetView<SearchScreenController> {
     final firstName = user != null && user["name"] != null
         ? user["name"].toString().split(" ").first
         : "there";
-    final company = user != null && user["company_name"] != null
-        ? user["company_name"].toString()
-        : null;
+    // Was reading user["company_name"] — company_name/company_id/company_logo
+    // are saved by login_controller.dart under their OWN top-level storage
+    // keys ("companyName" etc.), never merged into the "userLogin" object
+    // this screen reads everything else from, so this was always null and
+    // the company chip (and any logo) never showed on the home header.
+    final companyNameRaw = getData.read("companyName") as String? ?? '';
+    final company = companyNameRaw.isNotEmpty ? companyNameRaw : null;
+    final companyLogoRaw = getData.read("companyLogo") as String? ?? '';
+    final companyLogo = companyLogoRaw.isNotEmpty ? companyLogoRaw : null;
 
     return Scaffold(
       backgroundColor: ccBackground,
@@ -41,7 +47,7 @@ class SearchScreenView extends GetView<SearchScreenController> {
                 FirebaseAccesstoken accesstoken = FirebaseAccesstoken();
                 NotificationService.initialize().catchError((_) {});
                 Future(() => requestPermission()).catchError((_) {});
-                accesstoken.getAccessToken().catchError((_) {});
+                accesstoken.getAccessToken().catchError((_) => '');
               } catch (_) {}
               controller.getCurrentLocation();
               controller.update();
@@ -64,6 +70,7 @@ class SearchScreenView extends GetView<SearchScreenController> {
                         user: user,
                         firstName: firstName,
                         company: company,
+                        companyLogo: companyLogo,
                         controller: controller,
                       ),
                       const SizedBox(height: 20),
@@ -115,12 +122,14 @@ class _HomeHeader extends StatelessWidget {
     required this.user,
     required this.firstName,
     required this.company,
+    required this.companyLogo,
     required this.controller,
   });
 
   final dynamic user;
   final String firstName;
   final String? company;
+  final String? companyLogo;
   final SearchScreenController controller;
 
   @override
@@ -212,15 +221,36 @@ class _HomeHeader extends StatelessWidget {
                         color: ccIceBlue,
                         borderRadius: BorderRadius.circular(99),
                       ),
-                      child: Text(
-                        "#$company",
-                        style: const TextStyle(
-                          fontFamily: 'Inter',
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          color: ccPrimary,
-                          letterSpacing: 0.5,
-                        ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (companyLogo != null) ...[
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(4),
+                              child: Image.network(
+                                companyLogo!.startsWith('http')
+                                    ? companyLogo!
+                                    : '${Confing.imageurl}$companyLogo',
+                                width: 12,
+                                height: 12,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) =>
+                                    const SizedBox.shrink(),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                          ],
+                          Text(
+                            "#$company",
+                            style: const TextStyle(
+                              fontFamily: 'Inter',
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: ccPrimary,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                 ],

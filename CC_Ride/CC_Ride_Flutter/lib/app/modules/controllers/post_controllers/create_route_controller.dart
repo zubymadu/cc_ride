@@ -155,6 +155,9 @@ class CreateRouteController extends GetxController {
       if (driverMode.vehicleId != null) {
         selectedVehicleId.value = driverMode.vehicleId;
       }
+      // Fare field is hidden entirely for this mode, but submit() still
+      // validates fareController.text isn't empty before sending it along.
+      fareController.text = "0";
       return;
     }
 
@@ -224,6 +227,11 @@ class CreateRouteController extends GetxController {
   final RxDouble estimatedFare = 0.0.obs;
 
   Future<void> estimateFareApi() async {
+    // A pool driver drives their organisation's car for organisation
+    // points, never cash — no passenger-facing price to suggest at all,
+    // only a behind-the-scenes computation for analytics. The fare field
+    // itself is hidden in the view for this mode.
+    if (isPoolDriverMode.value) return;
     if (originLat.isEmpty || destinationLat.isEmpty) return;
     try {
       final body = {
@@ -246,8 +254,12 @@ class CreateRouteController extends GetxController {
           .timeout(const Duration(seconds: 15));
       final data = jsonDecode(response.body);
       if (response.statusCode == 200 && data["Result"] == "true") {
-        final model = data["data"]?["pricing_model"] ?? 'driver_set';
-        estimatedFare.value = double.tryParse("${data["data"]?["estimated_fare"] ?? 0}") ?? 0;
+        // Same response-shape bug as PostTripController/BookPricingController
+        // — /estimate_fare.php's fields are flat at the top level (legacy.
+        // controller.ts's local ok() spreads rather than nests under
+        // "data"), confirmed via direct curl against the live endpoint.
+        final model = data["pricing_model"] ?? 'driver_set';
+        estimatedFare.value = double.tryParse("${data["estimated_fare"] ?? 0}") ?? 0;
         hasEstimate.value = model == 'platform_computed' && estimatedFare.value > 0;
       }
     } catch (_) {

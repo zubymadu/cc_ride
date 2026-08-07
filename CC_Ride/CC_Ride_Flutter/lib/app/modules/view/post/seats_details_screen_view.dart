@@ -174,6 +174,11 @@ class SeatsDetailsScreenView extends GetView<SeatsDetailsScreenController> {
                   const SizedBox(height: 16),
 
                   // ── Price per seat ─────────────────────────────────────
+                  // A pool driver drives their organisation's car for
+                  // organisation points, never cash — there's no
+                  // passenger-facing price for them to see or set at all,
+                  // only a behind-the-scenes computation for analytics.
+                  if (!controller.isPoolDriverMode) ...[
                   _SectionCard(
                     title: "Price Per Seat",
                     child: Column(
@@ -317,6 +322,7 @@ class SeatsDetailsScreenView extends GetView<SeatsDetailsScreenController> {
                   ),
 
                   const SizedBox(height: 16),
+                  ],
 
                   // ── Route preview + description ────────────────────────
                   _SectionCard(

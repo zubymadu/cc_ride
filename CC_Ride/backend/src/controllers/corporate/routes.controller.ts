@@ -46,7 +46,10 @@ const InlineScheduleSchema = z.object({
   driver_id:      z.string().uuid(),
   vehicle_id:     z.string(),
   seat_capacity:  z.number().int().min(1).max(20),
-  fare:           z.number().positive(),
+  // A pool driver's route has no passenger-facing fare at all (pool driving
+  // earns organisation points, never cash) — the app sends 0 for that case,
+  // which .positive() used to reject outright.
+  fare:           z.number().min(0),
 })
 
 const CreateRouteSchema = z.object({
@@ -172,7 +175,10 @@ const CreateScheduleSchema = z.object({
   driver_id:      z.string().uuid(),
   vehicle_id:     z.string(),
   seat_capacity:  z.number().int().min(1).max(20),
-  fare:           z.number().positive(),
+  // A pool driver's route has no passenger-facing fare at all (pool driving
+  // earns organisation points, never cash) — the app sends 0 for that case,
+  // which .positive() used to reject outright.
+  fare:           z.number().min(0),
 })
 
 export async function createRouteSchedule(req: Request, res: Response) {
