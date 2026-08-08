@@ -1724,7 +1724,14 @@ export async function legacyPostTrip(req: Request, res: Response) {
     // Mark user as driver
     await prisma.user.update({ where: { id: userId }, data: { isDriver: true } })
 
-    const scheduledAt = new Date(`${trip_start_date}T${trip_start_time || '08:00'}:00`)
+    // trip_start_date/trip_start_time are plain WAT wall-clock strings with
+    // no offset — passing them to `new Date()` without one makes JS treat
+    // them as UTC, silently storing every ride an hour early (Nigeria is
+    // UTC+1). Usually harmless, but a ride posted for very-near-future times
+    // can end up parsed as already in the past relative to `scheduledAt: {
+    // gte: new Date() }` in legacyNearbyPostedRides, making it invisible on
+    // the passenger home feed despite being a perfectly valid post.
+    const scheduledAt = new Date(`${trip_start_date}T${trip_start_time || '08:00'}:00+01:00`)
 
     const ride = await prisma.ride.create({
       data: {

@@ -48,10 +48,15 @@ class VehiclesScreenView extends GetView<VehiclesScreenController> {
                 c.postTripController.vehicleId == "") {
               showToastMessage("Please add a vehicle first!".tr);
             } else {
+              // restrictionList (the optional "Other Options" chips further
+              // down this screen) used to be required here too — nothing
+              // pre-selects it and nothing marks it as required in the UI,
+              // so a driver who simply had no restrictions to flag (a valid,
+              // common case) got stuck on this screen forever with a vague
+              // "Please fill all details" toast and no way to proceed.
               if (c.skipVehicle) {
                 if (c.postTripController.luggageId.isNotEmpty &&
-                    c.postTripController.backRowId.isNotEmpty &&
-                    c.restrictionList.isNotEmpty) {
+                    c.postTripController.backRowId.isNotEmpty) {
                   Get.toNamed(Routes.SEATS_DETAILS_SCREEN,
                       arguments: Get.arguments);
                 } else {
@@ -60,8 +65,7 @@ class VehiclesScreenView extends GetView<VehiclesScreenController> {
               } else {
                 if (c.postTripController.vehicleId.isNotEmpty &&
                     c.postTripController.luggageId.isNotEmpty &&
-                    c.postTripController.backRowId.isNotEmpty &&
-                    c.restrictionList.isNotEmpty) {
+                    c.postTripController.backRowId.isNotEmpty) {
                   Get.toNamed(Routes.SEATS_DETAILS_SCREEN,
                       arguments: Get.arguments);
                 } else {

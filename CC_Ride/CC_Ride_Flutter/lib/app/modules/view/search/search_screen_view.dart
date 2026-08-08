@@ -117,6 +117,11 @@ class SearchScreenView extends GetView<SearchScreenController> {
                       // typing into the wrong field, which an unlabeled
                       // lookalike search box further down the page invited.
                       const Text("Search posted rides", style: CCText.titleMd),
+                      const SizedBox(height: 2),
+                      Text(
+                        "Browse rides other drivers have already posted, by city or state.",
+                        style: CCText.labelSm,
+                      ),
                       const SizedBox(height: 8),
                       _RideSearchBar(controller: controller),
                       const SizedBox(height: 12),
@@ -408,7 +413,14 @@ class _DestinationField extends StatelessWidget {
                     color: ccNavyText,
                   ),
                   decoration: const InputDecoration(
-                    hintText: "Search destination",
+                    // Distinct from the "Search rides by city" bar further
+                    // down the page — this one plans a brand-new A→B trip,
+                    // that one browses rides other people already posted.
+                    // The two were easy to conflate (same look, both near
+                    // the top), which repeatedly got reported as "search
+                    // finds nothing" even though the ride search itself
+                    // worked fine — the user was typing into this field.
+                    hintText: "Where are you going? (plan a new trip)",
                     hintStyle: TextStyle(
                       fontFamily: 'Inter',
                       fontSize: 15,

@@ -224,7 +224,12 @@ class TripData {
 
 class BookedUser {
     String? bookId;
-    num? userId;
+    // Backend sends this as a UUID string (passengerId), not a number — was
+    // mistyped as num?, which threw a type-cast exception inside
+    // tripDetailsApiModelFromJson() for any trip with at least one booking,
+    // silently caught by commonApi's try/catch and surfaced to the user as
+    // "Unable to load trip details" on tap.
+    String? userId;
     String? userName;
     String? userMobile;
     String? profilePic;

@@ -156,12 +156,16 @@ class Vehicle extends GetView<VehiclesScreenController> {
                   ),
                 ),
                 const SizedBox(height: 10),
-                Center(
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
                   child: Text(
                     controller
                         .dataGetApiModel!
                         .vehicleData![controller.selectedIndex]
                         .typeTitle!,
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       fontSize: 14,
                       fontFamily: 'Inter',
@@ -171,12 +175,16 @@ class Vehicle extends GetView<VehiclesScreenController> {
                   ),
                 ),
                 const SizedBox(height: 4),
-                Center(
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
                   child: Text(
                     controller
                         .dataGetApiModel!
                         .vehicleData![controller.selectedIndex]
                         .modelTitle!,
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       fontSize: 17,
                       fontFamily: 'Inter',
