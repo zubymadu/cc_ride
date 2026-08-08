@@ -7,6 +7,7 @@ import 'package:carride/app/data/confing.dart';
 import 'package:carride/app/data/data_store.dart';
 import 'package:carride/app/modules/controllers/driver_mode/driver_mode_controller.dart';
 import 'package:carride/app/modules/models/map_api_model.dart';
+import 'package:carride/app/modules/view/advert/advert_carousel.dart';
 import 'package:carride/app/routes/app_pages.dart';
 import 'package:carride/utils/cc_ds.dart';
 import 'package:carride/widgets/custom_widgets.dart';
@@ -96,7 +97,12 @@ class SearchScreenView extends GetView<SearchScreenController> {
                       ),
                       const SizedBox(height: 24),
 
-                      const _QuickActionsGrid(),
+                      // Replaces the old My Bookings / Wallet / Refer & Earn /
+                      // Help quick-actions row directly under "Book a Ride" —
+                      // those destinations are still reachable from the
+                      // Bookings and Account tabs, just no longer duplicated
+                      // here.
+                      const AdvertCarousel(),
                       const SizedBox(height: 24),
 
                       // Deliberately labeled and visually separated from the
@@ -523,58 +529,6 @@ class _ActionButton extends StatelessWidget {
   }
 }
 
-// ── Quick Actions Grid ──────────────────────────────────────────────────────────
-
-class _QuickActionsGrid extends StatelessWidget {
-  const _QuickActionsGrid();
-
-  static const _items = [
-    (label: "My Bookings", icon: Icons.confirmation_number_outlined, route: Routes.MY_BOOKING_SCREEN),
-    (label: "Wallet", icon: Icons.account_balance_wallet_outlined, route: Routes.WALLET_SCREEN),
-    (label: "Refer & Earn", icon: Icons.card_giftcard_rounded, route: Routes.REFER_SCREEN),
-    (label: "Help", icon: Icons.help_outline_rounded, route: Routes.HELP_SCREEN),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: _items
-          .map((item) => Expanded(
-                child: GestureDetector(
-                  onTap: () => Get.toNamed(item.route),
-                  child: Column(
-                    children: [
-                      Container(
-                        width: 48,
-                        height: 48,
-                        decoration: BoxDecoration(
-                          color: ccIceBlue,
-                          borderRadius: BorderRadius.circular(CCRadius.btn),
-                        ),
-                        child: Icon(item.icon, color: ccPrimary, size: 22),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        item.label,
-                        textAlign: TextAlign.center,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontFamily: 'Inter',
-                          fontSize: 11,
-                          fontWeight: FontWeight.w500,
-                          color: ccNavyText,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ))
-          .toList(),
-    );
-  }
-}
-
 // ── Nearby Shared Routes ────────────────────────────────────────────────────
 // Sleek horizontal cards for the fixed routes running near the passenger's
 // current location. Tapping one searches from here toward that route's
@@ -855,7 +809,7 @@ class _PlaceSearchResults extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           for (final ride in controller.placeSearchResults) ...[
-            _NearbyPostedRideCard(ride: ride, fullWidth: true),
+            _NearbyPostedRideCard(ride: ride, controller: controller, fullWidth: true),
             const SizedBox(height: 10),
           ],
         ],
@@ -893,6 +847,7 @@ class _NearbyPostedRides extends StatelessWidget {
               separatorBuilder: (_, __) => const SizedBox(width: 10),
               itemBuilder: (_, i) => _NearbyPostedRideCard(
                 ride: controller.nearbyPostedRides[i],
+                controller: controller,
               ),
             ),
           ),
@@ -903,8 +858,13 @@ class _NearbyPostedRides extends StatelessWidget {
 }
 
 class _NearbyPostedRideCard extends StatelessWidget {
-  const _NearbyPostedRideCard({required this.ride, this.fullWidth = false});
+  const _NearbyPostedRideCard({
+    required this.ride,
+    required this.controller,
+    this.fullWidth = false,
+  });
   final NearbyPostedRide ride;
+  final SearchScreenController controller;
   // Place-search results render as a full-width vertical list instead of the
   // fixed-width horizontal cards the home-screen nearby feed uses.
   final bool fullWidth;
@@ -913,14 +873,41 @@ class _NearbyPostedRideCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: () {
-        // A posted ride is a specific, already-bookable instance (unlike a
-        // Route corridor, which just describes a recurring path) — go
-        // straight to the same trip-preview/booking screen tapping a
-        // find-trip search result uses, instead of the trip-planning form.
-        Get.toNamed(Routes.TRIP_PREVIEW_SCREEN, arguments: {
-          "tripId": ride.tripId,
-          "findtrip": true,
-        });
+        if (ride.tripId != null) {
+          // A posted ride is a specific, already-bookable instance — go
+          // straight to the same trip-preview/booking screen tapping a
+          // find-trip search result uses.
+          Get.toNamed(Routes.TRIP_PREVIEW_SCREEN, arguments: {
+            "tripId": ride.tripId,
+            "findtrip": true,
+          });
+          return;
+        }
+        // A route-corridor search result (search_rides_by_place.php now
+        // covers these too, not just ad-hoc trips) has no real bookable
+        // Ride row until an occurrence is actually booked — hand off to
+        // trip-planning with the corridor pre-filled, exactly the same way
+        // tapping a "Shared routes near you" card already does (TRIP_PLAN_
+        // SCREEN reads controller state, not navigation arguments).
+        if (controller.originLat.isEmpty &&
+            controller.lat != null &&
+            controller.long != null) {
+          controller.originController.text = controller.addresshome.isNotEmpty
+              ? controller.addresshome
+              : "Current location";
+          controller.originLat = controller.lat!.toStringAsFixed(4);
+          controller.originLong = controller.long!.toStringAsFixed(4);
+        }
+        if (controller.tripDate.isEmpty) {
+          controller.departureDateTime = DateTime.now();
+        }
+        controller.waypoints.add(LatLng(ride.destinationLat, ride.destinationLong));
+        controller.destinationLat = ride.destinationLat.toStringAsFixed(4);
+        controller.destinationLong = ride.destinationLong.toStringAsFixed(4);
+        controller.destinationController.text = ride.destinationAddress;
+        controller.generateRoute();
+        controller.update();
+        Get.toNamed(Routes.TRIP_PLAN_SCREEN);
       },
       child: Container(
         width: fullWidth ? double.infinity : 210,
@@ -942,7 +929,12 @@ class _NearbyPostedRideCard extends StatelessWidget {
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
-                    "${ride.availableSeats} ${ride.availableSeats == 1 ? 'seat' : 'seats'}".tr,
+                    // Route-corridor results have no real seat count until an
+                    // occurrence is actually booked (see availableSeats:
+                    // null in ridePreviewShape's route branch).
+                    ride.availableSeats != null
+                        ? "${ride.availableSeats} ${ride.availableSeats == 1 ? 'seat' : 'seats'}".tr
+                        : "Recurring route".tr,
                     style: const TextStyle(
                       fontFamily: 'Inter',
                       fontSize: 11,

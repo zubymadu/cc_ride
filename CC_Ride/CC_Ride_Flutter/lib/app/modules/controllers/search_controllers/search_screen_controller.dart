@@ -763,7 +763,14 @@ class NearbyRoute {
 // place search results, hence distanceKm is nullable (place search has no
 // reference point to measure distance from).
 class NearbyPostedRide {
-  final String tripId;
+  // Exactly one of tripId/routeId is ever set — a route-corridor search
+  // result (recurring, driver-published) has no real bookable Ride row
+  // until someone actually books that occurrence, unlike an ad-hoc
+  // "Post a Trip" ride which always is one. The card's tap handler branches
+  // on which one is present: a real trip goes straight to booking, a route
+  // hands off to trip-planning (same as the "Shared routes near you" cards).
+  final String? tripId;
+  final String? routeId;
   final String originAddress;
   final double originLat;
   final double originLong;
@@ -774,10 +781,11 @@ class NearbyPostedRide {
   final String tripStartDate;
   final String tripStartTime;
   final String seatPrice;
-  final int availableSeats;
+  final int? availableSeats;
 
   NearbyPostedRide({
     required this.tripId,
+    required this.routeId,
     required this.originAddress,
     required this.originLat,
     required this.originLong,
@@ -792,7 +800,8 @@ class NearbyPostedRide {
   });
 
   factory NearbyPostedRide.fromJson(Map<String, dynamic> json) => NearbyPostedRide(
-        tripId: '${json["trip_id"]}',
+        tripId: json["trip_id"] != null ? '${json["trip_id"]}' : null,
+        routeId: json["route_id"] != null ? '${json["route_id"]}' : null,
         originAddress: '${json["origin_address"]}',
         originLat: double.tryParse('${json["origin_lat"]}') ?? 0,
         originLong: double.tryParse('${json["origin_long"]}') ?? 0,
@@ -803,6 +812,6 @@ class NearbyPostedRide {
         tripStartDate: '${json["trip_start_date"]}',
         tripStartTime: '${json["trip_start_time"]}',
         seatPrice: '${json["seat_price"]}',
-        availableSeats: int.tryParse('${json["available_seats"]}') ?? 0,
+        availableSeats: json["available_seats"] != null ? int.tryParse('${json["available_seats"]}') : null,
       );
 }

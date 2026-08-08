@@ -364,11 +364,19 @@ class MobileVarificationController extends GetxController {
                     : CCButton(
                         label: "Submit",
                         onPressed: () {
-                          if (otp == otpController.text) {
-                            verifiMobileApi();
-                          } else {
-                            showToastMessage("Please Enter valid otp..");
+                          // Same bug as email verification: `otp` only ever
+                          // gets a real value from a dev-fallback response
+                          // field, empty in a normal production build — this
+                          // comparison was effectively "" == <what the user
+                          // typed>, always false, so a real SMS code never
+                          // even reached the backend. verifiMobileApi()
+                          // already sends otpController.text and lets the
+                          // backend be the source of truth.
+                          if (otpController.text.trim().isEmpty) {
+                            showToastMessage("Please enter the OTP sent to your phone");
+                            return;
                           }
+                          verifiMobileApi();
                         },
                       ),
               ],

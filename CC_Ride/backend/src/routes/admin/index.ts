@@ -57,12 +57,22 @@ import {
 } from '../../controllers/admin/employees.controller'
 import { deleteWalletTransaction, deletePayoutRequest } from '../../controllers/admin/financeHousekeeping.controller'
 import { reseedFaqs } from '../../controllers/user/legacy.controller'
+import { listAdverts, createAdvert, updateAdvert, deleteAdvert } from '../../controllers/admin/adverts.controller'
 
 const logoUpload = multer({
   dest: '/app/uploads/profiles/',
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     const ok = /\.(jpe?g|png|webp|svg)$/i.test(file.originalname)
+    cb(null, ok)
+  },
+})
+
+const advertUpload = multer({
+  dest: '/app/uploads/adverts/',
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const ok = /\.(jpe?g|png|webp)$/i.test(file.originalname)
     cb(null, ok)
   },
 })
@@ -247,5 +257,12 @@ router.post('/companies/:id/logo', logoUpload.single('logo'), uploadCompanyLogo)
 // Super-admin: company contact correction + admin-account reset.
 router.patch('/companies/:id/contact',           requireSuperAdmin, updateCompanyContact)
 router.post('/companies/:id/reset-admin-user',   requireSuperAdmin, resetCompanyAdminUser)
+
+// Adverts — platform-wide home-screen carousel content, super-admin only
+// (unlike company logo, this isn't scoped to a company's own admin).
+router.get('/adverts',       requireSuperAdmin, listAdverts)
+router.post('/adverts',      requireSuperAdmin, advertUpload.single('image'), createAdvert)
+router.patch('/adverts/:id', requireSuperAdmin, updateAdvert)
+router.delete('/adverts/:id', requireSuperAdmin, deleteAdvert)
 
 export default router

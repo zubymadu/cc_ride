@@ -26,7 +26,7 @@ import {
   legacyNotificationList, legacyNotificationRead, legacyNotificationDelete,
   legacyWalletReport, legacyWalletUp,
   legacyEarning, legacyRequestWithdraw, legacyPayoutList,
-  legacyFaq, legacyPageList,
+  legacyFaq, legacyPageList, legacyListAdverts,
   legacyPaymentGateway, legacyCheckCoupon, legacyCouponList,
   legacyReferData,
   legacyProcessingTrip, legacyCompleteTrip, legacyRateUpdate,
@@ -152,6 +152,7 @@ router.post('/faq.php',              legacyFaq)
 router.post('/pagelist.php',         legacyPageList)
 router.get('/faq.php',               legacyFaq)
 router.get('/pagelist.php',          legacyPageList)
+router.get('/adverts.php',           legacyListAdverts)
 
 // ─── Payments & coupons ───────────────────────────────────────────────────────
 router.post('/paymentgateway.php',   legacyPaymentGateway)

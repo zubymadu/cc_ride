@@ -7,8 +7,13 @@ import crypto from 'crypto'
 
 const BASE = 'https://api.flutterwave.com/v3'
 
-function client() {
-  const key = process.env.FLUTTERWAVE_SECRET_KEY
+// Was hardcoded to only ever read FLUTTERWAVE_SECRET_KEY from the process
+// env — the admin Settings page has had a "Flutterwave Secret Key" field
+// (PlatformSettings.flutterwaveSecretKey) this whole time, exactly like
+// Paystack's, but this function never read it, so whatever an admin
+// configured there was silently never used.
+function client(secretKey?: string) {
+  const key = secretKey || process.env.FLUTTERWAVE_SECRET_KEY
   if (!key) throw new Error('FLUTTERWAVE_SECRET_KEY not set')
   return axios.create({
     baseURL: BASE,
@@ -58,8 +63,9 @@ export async function flwInitialize(params: {
   redirectUrl: string
   description: string
   meta?:       Record<string, unknown>
+  secretKey?:  string
 }): Promise<FlwInitResult> {
-  const { data } = await client().post('/payments', {
+  const { data } = await client(params.secretKey).post('/payments', {
     tx_ref:       params.txRef,
     amount:       params.amountNGN,
     currency:     'NGN',
@@ -86,16 +92,16 @@ export async function flwInitialize(params: {
 
 // ─── Verify Payment by Transaction ID ────────────────────────────────────────
 
-export async function flwVerifyById(transactionId: number): Promise<FlwVerifyResult> {
-  const { data } = await client().get(`/transactions/${transactionId}/verify`)
+export async function flwVerifyById(transactionId: number, secretKey?: string): Promise<FlwVerifyResult> {
+  const { data } = await client(secretKey).get(`/transactions/${transactionId}/verify`)
   if (data.status !== 'success') throw new Error(data.message ?? 'Flutterwave verify failed')
   return data.data as FlwVerifyResult
 }
 
 // ─── Verify Payment by tx_ref ─────────────────────────────────────────────────
 
-export async function flwVerifyByRef(txRef: string): Promise<FlwVerifyResult> {
-  const { data } = await client().get(`/transactions?tx_ref=${encodeURIComponent(txRef)}`)
+export async function flwVerifyByRef(txRef: string, secretKey?: string): Promise<FlwVerifyResult> {
+  const { data } = await client(secretKey).get(`/transactions?tx_ref=${encodeURIComponent(txRef)}`)
   if (data.status !== 'success' || !data.data?.length) {
     throw new Error(`Transaction not found: ${txRef}`)
   }

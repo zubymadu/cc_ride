@@ -89,7 +89,13 @@ class SeatsDetailsScreenView extends GetView<SeatsDetailsScreenController> {
               }
             } else {
               controller.postTripController.totalSeat = "";
-              controller.postTripController.seatPrice = "";
+              // Pool drivers have no price UI — onInit already set seatPrice
+              // to "0" so the (hidden) field still passes validation. Wiping
+              // it back to "" here raced with that and made every pool-driver
+              // post-trip submission fail with "Required fields missing".
+              if (!controller.isPoolDriverMode) {
+                controller.postTripController.seatPrice = "";
+              }
               controller.postTripController.tripDescription = "";
             }
             controller.update();

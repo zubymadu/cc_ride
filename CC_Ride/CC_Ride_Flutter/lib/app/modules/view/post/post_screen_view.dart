@@ -1,5 +1,6 @@
 import 'package:carride/app/data/data_store.dart';
 import 'package:carride/app/modules/controllers/driver_mode/driver_mode_controller.dart';
+import 'package:carride/app/modules/view/advert/advert_carousel.dart';
 import 'package:carride/app/routes/app_pages.dart';
 import 'package:carride/utils/cc_ds.dart';
 import 'package:carride/widgets/custom_widgets.dart';
@@ -145,6 +146,8 @@ class PostScreenView extends GetView<PostScreenController> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      const AdvertCarousel(),
+                      const SizedBox(height: 20),
                       const Text(
                         "How it Works",
                         style: TextStyle(

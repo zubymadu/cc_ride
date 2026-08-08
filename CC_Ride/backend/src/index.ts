@@ -8,7 +8,7 @@ import { Server as SocketServer } from 'socket.io'
 import router from './routes'
 import { prisma } from './lib/prisma'
 import { requireAuth } from './middleware/auth'
-import { legacyPaystackInit, legacyPaystackCallback, legacyPaystackResult } from './controllers/user/legacy.controller'
+import { legacyPaystackInit, legacyPaystackCallback, legacyPaystackResult, legacyFlutterwaveInit, legacyFlutterwaveCallback, legacyFlutterwaveResult } from './controllers/user/legacy.controller'
 import { startRideRequestCleanup } from './lib/rideRequestCleanup'
 
 const app  = express()
@@ -92,6 +92,16 @@ app.use('/api', router)
 app.post('/paystack/index.php',  requireAuth, legacyPaystackInit)
 app.get('/paystack_callback.php', legacyPaystackCallback)
 app.get('/paystack_result.php',   legacyPaystackResult)
+
+// Flutterwave — same shape as Paystack above. flwInitialize()/flwVerifyByRef()
+// already existed in lib/flutterwave.ts and legacyBookSeat already verified
+// against them as a fallback, but nothing ever exercised the init/callback
+// half — the Flutter app opened a raw GET URL with no matching route (404)
+// and no auth. This closes that gap the same secure way Paystack works: an
+// authenticated POST decides the amount server-side, never the client's.
+app.post('/flutterwave/index.php',   requireAuth, legacyFlutterwaveInit)
+app.get('/flutterwave_callback.php', legacyFlutterwaveCallback)
+app.get('/flutterwave_result.php',   legacyFlutterwaveResult)
 
 // ─── 404 ─────────────────────────────────────────────────────────────────────
 app.use((_req, res) => {

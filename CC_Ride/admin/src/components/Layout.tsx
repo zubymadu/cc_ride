@@ -2,7 +2,7 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users, Car, Building2, MapPin, Radio,
   CreditCard, LifeBuoy, Settings, LogOut, Menu, X,
-  Bell, CheckSquare, BarChart2, FileText, Percent, Trash2,
+  Bell, CheckSquare, BarChart2, FileText, Percent, Trash2, Image,
 } from 'lucide-react'
 import { useState } from 'react'
 import { useAuthStore } from '../store/auth'
@@ -23,6 +23,7 @@ const NAV = [
   { to: '/billing',   icon: FileText,        label: 'Billing',       superAdminOnly: true },
   { to: '/pricing',   icon: Percent,         label: 'Pricing',       superAdminOnly: true },
   { to: '/payments',  icon: CreditCard,      label: 'Payments',      superAdminOnly: true },
+  { to: '/adverts',   icon: Image,           label: 'Adverts',       superAdminOnly: true },
   { to: '/support',   icon: LifeBuoy,        label: 'Support',       superAdminOnly: true },
   { to: '/settings',  icon: Settings,        label: 'Settings',      superAdminOnly: true },
   { to: '/housekeeping', icon: Trash2,       label: 'Housekeeping',  superAdminOnly: true },

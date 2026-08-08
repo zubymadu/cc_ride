@@ -362,11 +362,22 @@ class EmailVarificationController extends GetxController {
                     : CCButton(
                         label: "Submit",
                         onPressed: () {
-                          if (otp == otpController.text) {
-                            verifiEmailApi();
-                          } else {
-                            showToastMessage("Please Enter valid otp..");
+                          // Was comparing against `otp`, which only ever
+                          // gets a real value from data["OTP"] in
+                          // emailOtpApi's dev-fallback branch (no SMTP
+                          // configured) — in a normal production build with
+                          // SMTP working, `otp` stays "", so this check was
+                          // "" == <whatever the user typed>, always false.
+                          // The real code the user received by email never
+                          // even reached the backend; verifiEmailApi()
+                          // already sends otpController.text and lets the
+                          // backend be the actual source of truth, so just
+                          // require something be entered and let it decide.
+                          if (otpController.text.trim().isEmpty) {
+                            showToastMessage("Please enter the OTP sent to your email");
+                            return;
                           }
+                          verifiEmailApi();
                         },
                       ),
               ],

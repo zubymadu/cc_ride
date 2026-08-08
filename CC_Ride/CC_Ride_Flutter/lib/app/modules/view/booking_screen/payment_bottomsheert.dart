@@ -3,6 +3,7 @@
 import 'package:carride/app/data/confing.dart';
 import 'package:carride/app/data/data_store.dart';
 import 'package:carride/app/modules/controllers/booking_controllers/payment_screen_controller.dart';
+import 'package:carride/app/modules/controllers/payment/flutter_wave_api_controller.dart';
 import 'package:carride/app/modules/controllers/payment/pay_stack_api_controller.dart';
 import 'package:carride/app/modules/payment_getway/paypal/src/screens/paypal_screen.dart';
 import 'package:carride/utils/cc_ds.dart';
@@ -13,6 +14,8 @@ import 'package:get/get.dart';
 payBottomsheet({required String totalAmt}) {
   final PayStackApiController payStackApiController =
       Get.put(PayStackApiController());
+  final FlutterWaveApiController flutterWaveApiController =
+      Get.put(FlutterWaveApiController());
   int paymentIndex = -1;
   return Get.bottomSheet(
     isScrollControlled: true,
@@ -193,13 +196,36 @@ payBottomsheet({required String totalAmt}) {
                                         'Unable to start Paystack payment');
                                   });
                                 } else if (gatewayType == 'flutterwave') {
-                                  c.webViewPaymentMethod(
-                                    initialUrl:
-                                        '${Confing.imageurl + Confing.flutterwave}amt=$totalAmt&email=${getData.read('userLogin')['email']}',
-                                    status1: 'status',
-                                    status2: 'successful',
-                                    tId: 'transaction_id',
-                                  );
+                                  flutterWaveApiController
+                                      .flutterWaveApi(
+                                          email:
+                                              '${getData.read('userLogin')['email']}',
+                                          amount: totalAmt)
+                                      .then((value) {
+                                    c.isLoading = false;
+                                    c.update();
+                                    if (value != null &&
+                                        value['status'] == true &&
+                                        value['data'] != null &&
+                                        value['data']['authorization_url'] !=
+                                            null) {
+                                      c.webViewPaymentMethod(
+                                        initialUrl:
+                                            '${value['data']['authorization_url']}',
+                                        status1: 'status',
+                                        status2: 'successful',
+                                        tId: 'transaction_id',
+                                      );
+                                    } else {
+                                      showToastMessage(
+                                          '${value?["message"] ?? "Unable to start Flutterwave payment"}');
+                                    }
+                                  }).catchError((e) {
+                                    c.isLoading = false;
+                                    c.update();
+                                    showToastMessage(
+                                        'Unable to start Flutterwave payment');
+                                  });
                                 } else if (pid == '3') {
                                   final ids =
                                       attrs.toString().split(',');
@@ -252,13 +278,36 @@ payBottomsheet({required String totalAmt}) {
                                     showToastMessage('Unable to start Paystack payment');
                                   });
                                 } else if (pid == '7') {
-                                  c.webViewPaymentMethod(
-                                    initialUrl:
-                                        '${Confing.imageurl + Confing.flutterwave}amt=$totalAmt&email=${getData.read('userLogin')['email']}',
-                                    status1: 'status',
-                                    status2: 'successful',
-                                    tId: 'transaction_id',
-                                  );
+                                  flutterWaveApiController
+                                      .flutterWaveApi(
+                                          email:
+                                              '${getData.read('userLogin')['email']}',
+                                          amount: totalAmt)
+                                      .then((value) {
+                                    c.isLoading = false;
+                                    c.update();
+                                    if (value != null &&
+                                        value['status'] == true &&
+                                        value['data'] != null &&
+                                        value['data']['authorization_url'] !=
+                                            null) {
+                                      c.webViewPaymentMethod(
+                                        initialUrl:
+                                            '${value['data']['authorization_url']}',
+                                        status1: 'status',
+                                        status2: 'successful',
+                                        tId: 'transaction_id',
+                                      );
+                                    } else {
+                                      showToastMessage(
+                                          '${value?["message"] ?? "Unable to start Flutterwave payment"}');
+                                    }
+                                  }).catchError((e) {
+                                    c.isLoading = false;
+                                    c.update();
+                                    showToastMessage(
+                                        'Unable to start Flutterwave payment');
+                                  });
                                 } else if (pid == '8') {
                                   c.webViewPaymentMethod(
                                     initialUrl:

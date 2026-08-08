@@ -3,6 +3,7 @@
 import 'package:carride/app/data/confing.dart';
 import 'package:carride/app/data/data_store.dart';
 import 'package:carride/app/modules/controllers/account_controllers/wallet_screen_controller.dart';
+import 'package:carride/app/modules/controllers/payment/flutter_wave_api_controller.dart';
 import 'package:carride/app/modules/controllers/payment/pay_stack_api_controller.dart';
 import 'package:carride/app/modules/payment_getway/paypal/src/screens/paypal_screen.dart';
 import 'package:carride/utils/cc_ds.dart';
@@ -17,6 +18,8 @@ Future addWalletPaymentSheet() {
   TextEditingController walletAmountController = TextEditingController();
   PayStackApiController payStackApiController =
       Get.put(PayStackApiController());
+  FlutterWaveApiController flutterWaveApiController =
+      Get.put(FlutterWaveApiController());
   int paymentIndex = -1;
   return Get.bottomSheet(
     isScrollControlled: true,
@@ -293,13 +296,35 @@ Future addWalletPaymentSheet() {
                                       showToastMessage('Unable to start Paystack payment');
                                     });
                                   } else if (selectedGateway == 'flutterwave') {
-                                    walletScreenController.webViewPaymentMethod(
-                                      initialUrl:
-                                          '${Confing.imageurl + Confing.flutterwave}amt=${walletAmountController.text}&email=${getData.read("userLogin")["email"]}',
-                                      status1: 'status',
-                                      status2: 'successful',
-                                      tId: 'transaction_id',
-                                    );
+                                    flutterWaveApiController
+                                        .flutterWaveApi(
+                                            email:
+                                                '${getData.read("userLogin")["email"]}',
+                                            amount: walletAmountController.text)
+                                        .then((value) {
+                                      walletScreenController.addWalletLodar = false;
+                                      walletScreenController.update();
+                                      if (value != null &&
+                                          value['status'] == true &&
+                                          value['data'] != null &&
+                                          value['data']['authorization_url'] != null) {
+                                        walletScreenController
+                                            .webViewPaymentMethod(
+                                          initialUrl:
+                                              '${value["data"]["authorization_url"]}',
+                                          status1: 'status',
+                                          status2: 'successful',
+                                          tId: 'transaction_id',
+                                        );
+                                      } else {
+                                        showToastMessage(
+                                            '${value?["message"] ?? "Unable to start Flutterwave payment"}');
+                                      }
+                                    }).catchError((e) {
+                                      walletScreenController.addWalletLodar = false;
+                                      walletScreenController.update();
+                                      showToastMessage('Unable to start Flutterwave payment');
+                                    });
                                   } else if (walletScreenController.paymentId ==
                                       '3') {
                                     List ids = walletScreenController
@@ -370,13 +395,35 @@ Future addWalletPaymentSheet() {
                                     });
                                   } else if (walletScreenController.paymentId ==
                                       '7') {
-                                    walletScreenController.webViewPaymentMethod(
-                                      initialUrl:
-                                          '${Confing.imageurl + Confing.flutterwave}amt=${walletAmountController.text}&email=${getData.read("userLogin")["email"]}',
-                                      status1: 'status',
-                                      status2: 'successful',
-                                      tId: 'transaction_id',
-                                    );
+                                    flutterWaveApiController
+                                        .flutterWaveApi(
+                                            email:
+                                                '${getData.read("userLogin")["email"]}',
+                                            amount: walletAmountController.text)
+                                        .then((value) {
+                                      walletScreenController.addWalletLodar = false;
+                                      walletScreenController.update();
+                                      if (value != null &&
+                                          value['status'] == true &&
+                                          value['data'] != null &&
+                                          value['data']['authorization_url'] != null) {
+                                        walletScreenController
+                                            .webViewPaymentMethod(
+                                          initialUrl:
+                                              '${value["data"]["authorization_url"]}',
+                                          status1: 'status',
+                                          status2: 'successful',
+                                          tId: 'transaction_id',
+                                        );
+                                      } else {
+                                        showToastMessage(
+                                            '${value?["message"] ?? "Unable to start Flutterwave payment"}');
+                                      }
+                                    }).catchError((e) {
+                                      walletScreenController.addWalletLodar = false;
+                                      walletScreenController.update();
+                                      showToastMessage('Unable to start Flutterwave payment');
+                                    });
                                   } else if (walletScreenController.paymentId ==
                                       '8') {
                                     walletScreenController.webViewPaymentMethod(

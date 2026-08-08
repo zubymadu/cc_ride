@@ -12,6 +12,7 @@ import Approvals from './pages/Approvals'
 import Analytics from './pages/Analytics'
 import Billing from './pages/Billing'
 import Payments from './pages/Payments'
+import Adverts from './pages/Adverts'
 import Support from './pages/Support'
 import Settings from './pages/Settings'
 import Download from './pages/Download'
@@ -68,6 +69,7 @@ export default function App() {
           <Route path="billing"    element={<Billing />} />
           <Route path="pricing"    element={<Pricing />} />
           <Route path="payments"   element={<Payments />} />
+          <Route path="adverts"    element={<Adverts />} />
           <Route path="support"    element={<Support />} />
           <Route path="settings"   element={<Settings />} />
           <Route path="housekeeping" element={<Housekeeping />} />

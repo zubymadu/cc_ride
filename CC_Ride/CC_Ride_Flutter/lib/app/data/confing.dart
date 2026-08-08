@@ -71,6 +71,7 @@ class Confing {
   //======================= find =======================
   static String findTrip = 'find_trip.php';
   static String findTripDetail = 'find_trip_detail.php';
+  static String adverts = 'adverts.php';
   static String nearbyRoutes = 'nearby_routes.php';
   static String nearbyPostedRides = 'nearby_posted_rides.php';
   static String searchRidesByPlace = 'search_rides_by_place.php';
@@ -152,7 +153,13 @@ class Confing {
   static const String payoutList = "payout_list.php";
 
   //======================= payment getway =======================
-  static String flutterwave = "flutterwave/index.php?";
+  // Was opened directly as a GET webview URL with a client-supplied amount
+  // and no auth header — no matching backend route existed at all (404),
+  // and even if it had, trusting a client-declared amount for a real charge
+  // is a real problem. Now POSTed the same authenticated way payStack is
+  // (see FlutterwaveApiController), server decides the amount from its own
+  // records.
+  static String flutterwave = "flutterwave/index.php";
   static String stripe = "stripe/index.php?";
   static String paytm = "paytm/index.php?";
   static String payStack = "paystack/index.php";

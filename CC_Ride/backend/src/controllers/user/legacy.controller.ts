@@ -8,7 +8,7 @@ import jwt from 'jsonwebtoken'
 import bcrypt from 'bcryptjs'
 import { prisma } from '../../lib/prisma'
 import { paystackInitialize, paystackVerify } from '../../lib/paystack'
-import { flwVerifyByRef, flwVerifyById } from '../../lib/flutterwave'
+import { flwVerifyByRef, flwVerifyById, flwInitialize, flwTxRef } from '../../lib/flutterwave'
 import { notifyNearbyDriversOfRequest, notifyPassengerOfMatch } from '../../lib/notify'
 import { sendMail } from '../../lib/mail'
 import { distanceKm } from '../../lib/geo'
@@ -1177,13 +1177,35 @@ export async function legacyNearbyRoutes(req: Request, res: Response) {
 // Trip" flow (routeId null) never showed up anywhere on the home screen at
 // all, regardless of how close it was. Same radius/live-status shape as
 // nearby routes, scoped to ad-hoc rides instead of route occurrences.
+// Shared by both ad-hoc "Post a Trip" rides and recurring Route
+// occurrences — a route occurrence has no real Ride row (and therefore no
+// available_seats count) until someone actually books it, hence both
+// fields are nullable; the Flutter side branches its card's tap handler
+// on whether trip_id or route_id is present.
+interface RidePreviewResult {
+  trip_id: string | null
+  route_id: string | null
+  origin_address: string
+  origin_lat: number
+  origin_long: number
+  destination_address: string
+  destination_lat: number
+  destination_long: number
+  distance_km: number | null
+  trip_start_date: string
+  trip_start_time: string
+  seat_price: string
+  available_seats: number | null
+}
+
 function ridePreviewShape(r: {
   id: string; originAddress: string; originLat: any; originLng: any
   destinationAddress: string; destinationLat: any; destinationLng: any
   scheduledAt: Date; baseFare: any; availableSeats: number
-}, distance: number | null) {
+}, distance: number | null): RidePreviewResult {
   return {
     trip_id:           r.id,
+    route_id:          null,
     origin_address:    r.originAddress,
     origin_lat:        Number(r.originLat),
     origin_long:        Number(r.originLng),
@@ -1216,13 +1238,51 @@ export async function legacyNearbyPostedRides(req: Request, res: Response) {
       take: 200, // filtered down by radius below; a generous pre-filter cap
     })
 
-    const nearby = rides
-      .map(r => ({ ride: r, distance: distanceKm(lat, lng, Number(r.originLat), Number(r.originLng)) }))
-      .filter(c => c.distance <= NEARBY_ROUTES_RADIUS_KM)
-      .sort((a, b) => a.distance - b.distance)
+    const tripCandidates = rides
+      .map(r => ({ result: ridePreviewShape(r, distanceKm(lat, lng, Number(r.originLat), Number(r.originLng))) }))
+      .filter(c => (c.result.distance_km ?? Infinity) <= NEARBY_ROUTES_RADIUS_KM)
+
+    // Same gap as legacySearchRidesByPlace had — recurring Route corridors
+    // never showed up here, only ad-hoc "Post a Trip" rides, even though a
+    // corridor's origin can be right next to the passenger. Resolve each
+    // nearby route to its next occurrence exactly like legacyNearbyRoutes
+    // does, and merge in using the shared RidePreviewResult shape.
+    const routes = await prisma.route.findMany({
+      where: { isActive: true },
+      include: { schedules: { where: { isActive: true } } },
+      take: 100,
+    })
+    const now = new Date()
+    const routeCandidates: { result: RidePreviewResult }[] = []
+    for (const route of routes) {
+      const distance = distanceKm(lat, lng, Number(route.originLat), Number(route.originLng))
+      if (distance > NEARBY_ROUTES_RADIUS_KM) continue
+      const occurrence = nextScheduleOccurrence(route.schedules, now)
+      if (!occurrence) continue
+      routeCandidates.push({
+        result: {
+          trip_id:             null,
+          route_id:            route.id,
+          origin_address:      route.originName,
+          origin_lat:          Number(route.originLat),
+          origin_long:         Number(route.originLng),
+          destination_address: route.destinationName,
+          destination_lat:     Number(route.destinationLat),
+          destination_long:    Number(route.destinationLng),
+          distance_km:         Number(distance.toFixed(1)),
+          trip_start_date:     occurrence.occurrenceDate.toISOString().slice(0, 10),
+          trip_start_time:     occurrence.occurrenceDate.toISOString().slice(11, 16),
+          seat_price:          String(Number(occurrence.schedule.fare)),
+          available_seats:     null,
+        },
+      })
+    }
+
+    const nearby = [...tripCandidates, ...routeCandidates]
+      .sort((a, b) => (a.result.distance_km ?? Infinity) - (b.result.distance_km ?? Infinity))
       .slice(0, 15)
 
-    ok(res, { Data: nearby.map(({ ride, distance }) => ridePreviewShape(ride, distance)) })
+    ok(res, { Data: nearby.map(c => c.result) })
   } catch (err) {
     console.error('legacyNearbyPostedRides:', err); fail(res, 'Server error')
   }
@@ -1241,6 +1301,8 @@ export async function legacySearchRidesByPlace(req: Request, res: Response) {
     const query = String(req.body.query ?? req.query.query ?? '').trim()
     if (query.length < 2) { fail(res, 'query must be at least 2 characters'); return }
 
+    // Ad-hoc one-off rides ("Post a Trip", routeId null) — always a real,
+    // directly bookable Ride row.
     const rides = await prisma.ride.findMany({
       where: {
         routeId: null,
@@ -1256,7 +1318,48 @@ export async function legacySearchRidesByPlace(req: Request, res: Response) {
       take: 30,
     })
 
-    ok(res, { Data: rides.map(r => ridePreviewShape(r, null)) })
+    // Recurring driver-published Route corridors were entirely missing from
+    // this search before — a rider searching "Abuja" got zero results for
+    // any route whose corridor runs through Abuja, even though the exact
+    // same corridors show up fine on the home screen's "Shared routes near
+    // you" widget. Same address-text match, resolved to each route's next
+    // upcoming occurrence (mirrors legacyNearbyRoutes' own resolution).
+    const routes = await prisma.route.findMany({
+      where: {
+        isActive: true,
+        OR: [
+          { originName:      { contains: query, mode: 'insensitive' } },
+          { destinationName: { contains: query, mode: 'insensitive' } },
+        ],
+      },
+      include: { schedules: { where: { isActive: true } } },
+      take: 30,
+    })
+    const now = new Date()
+    const routeResults: RidePreviewResult[] = []
+    for (const route of routes) {
+      const occurrence = nextScheduleOccurrence(route.schedules, now)
+      if (!occurrence) continue
+      routeResults.push({
+        trip_id:             null, // route occurrences aren't a real Ride row until booked
+        route_id:            route.id,
+        origin_address:      route.originName,
+        origin_lat:          Number(route.originLat),
+        origin_long:         Number(route.originLng),
+        destination_address: route.destinationName,
+        destination_lat:     Number(route.destinationLat),
+        destination_long:    Number(route.destinationLng),
+        distance_km:         null,
+        trip_start_date:     occurrence.occurrenceDate.toISOString().slice(0, 10),
+        trip_start_time:     occurrence.occurrenceDate.toISOString().slice(11, 16),
+        seat_price:          String(Number(occurrence.schedule.fare)),
+        available_seats:     null,
+      })
+    }
+
+    const tripResults = rides.map(r => ridePreviewShape(r, null))
+
+    ok(res, { Data: [...tripResults, ...routeResults].slice(0, 40) })
   } catch (err) {
     console.error('legacySearchRidesByPlace:', err); fail(res, 'Server error')
   }
@@ -1861,13 +1964,17 @@ async function awardPoolPoints(driverId: string, bookingId: string) {
 export async function legacyBookSeat(req: Request, res: Response) {
   try {
     const userId = req.user.id
-    const { trip_id, seat, wallet_amount, coupon_code, transaction_id } = req.body
+    // Flutter's bookSeatApi sends `total_seat`/`wall_amt` (payment_screen_
+    // controller.dart), not `seat`/`wallet_amount` — accept both so seat
+    // count and wallet balance actually reach this handler instead of
+    // silently defaulting to 1 seat and 0 wallet usage every time.
+    const { trip_id, seat, total_seat, wallet_amount, wall_amt, coupon_code, transaction_id } = req.body
     if (!trip_id) { fail(res, 'trip_id required'); return }
 
     const ride = await prisma.ride.findUnique({ where: { id: String(trip_id) } })
     if (!ride) { fail(res, 'Trip not found'); return }
 
-    const seatsToBook = parseInt(seat ?? '1') || 1
+    const seatsToBook = parseInt(seat ?? total_seat ?? '1') || 1
     if (ride.availableSeats < seatsToBook) {
       // Waitlisting only makes sense for a scheduled route ride (more seats
       // may free up if someone cancels, and the org runs this route again
@@ -1939,7 +2046,7 @@ export async function legacyBookSeat(req: Request, res: Response) {
     // Never trust the client's claimed wallet_amount beyond what they can
     // actually cover — previously this could push a balance negative by
     // simply claiming a larger wallet_amount than the account actually held.
-    const walletUsed = Math.min(parseFloat(wallet_amount ?? '0') || 0, grossDue, walletAvailable)
+    const walletUsed = Math.min(parseFloat(wallet_amount ?? wall_amt ?? '0') || 0, grossDue, walletAvailable)
     const total = grossDue - walletUsed
     // Wallet is applied to the (discounted) ride fare first, so driver
     // payout reflects the actual ride value regardless of how the booking
@@ -2790,20 +2897,22 @@ export async function legacyWalletReport(req: Request, res: Response) {
   }
 }
 
-// Wallet top-ups are only credited against a Paystack reference that's been
+// Wallet top-ups are only credited against a gateway reference that's been
 // independently verified server-side — never against a client-declared
-// amount. `payment_id` must be the Paystack transaction reference returned
-// by legacyPaystackInit; the credited amount comes from Paystack's own
-// verify response, not whatever the client claims. This is the only gateway
-// with a real backend integration in this build (see legacyPaystackInit/
-// legacyPaystackCallback above) — Razorpay/Stripe/Flutterwave/etc call sites
-// in the Flutter app have no matching backend verification and will now
-// correctly fail here rather than silently crediting an unverified amount.
+// amount. Tries Paystack first, then Flutterwave as a fallback, same
+// dual-gateway pattern legacyBookSeat already uses correctly — this used to
+// only ever try Paystack, so a genuine Flutterwave top-up would show
+// "successful" in the webview (its own redirect really did succeed) but
+// then fail here with "Could not verify this payment reference", crediting
+// nothing despite the user having actually paid. Razorpay/Stripe/etc call
+// sites elsewhere in the Flutter app still have no matching backend
+// integration and will correctly fail here rather than silently crediting
+// an unverified amount.
 export async function legacyWalletUp(req: Request, res: Response) {
   try {
     const userId = req.user.id
     const { payment_id: reference } = req.body
-    if (!reference) { fail(res, 'payment_id (Paystack reference) required'); return }
+    if (!reference) { fail(res, 'payment_id (gateway transaction reference) required'); return }
 
     // Idempotent: WalletTransaction.reference is unique, so a retried/replayed
     // call with the same reference fails the create below rather than
@@ -2812,16 +2921,25 @@ export async function legacyWalletUp(req: Request, res: Response) {
     if (existing) { fail(res, 'This payment has already been credited'); return }
 
     const settings = await prisma.platformSettings.findUnique({ where: { id: 1 } })
-    let result
-    try {
-      result = await paystackVerify(String(reference), settings?.paystackSecretKey || undefined)
-    } catch (err) {
-      console.error('legacyWalletUp verify:', err)
-      fail(res, 'Could not verify this payment reference'); return
-    }
-    if (result.status !== 'success') { fail(res, 'Payment was not successful'); return }
+    const ref = String(reference)
+    let amt: number | null = null
 
-    const amt = result.amount / 100 // kobo -> naira, from Paystack's verified record
+    try {
+      const result = await paystackVerify(ref, settings?.paystackSecretKey || undefined)
+      if (result.status === 'success') amt = result.amount / 100 // kobo -> naira
+    } catch { /* not a Paystack reference — fall through to Flutterwave */ }
+
+    if (amt == null) {
+      try {
+        const numericId = Number(ref)
+        const result = Number.isFinite(numericId) && String(numericId) === ref
+          ? await flwVerifyById(numericId, settings?.flutterwaveSecretKey || undefined)
+          : await flwVerifyByRef(ref, settings?.flutterwaveSecretKey || undefined)
+        if (result.status === 'successful') amt = result.amount // already naira
+      } catch { /* not a valid Flutterwave transaction either */ }
+    }
+
+    if (amt == null) { fail(res, 'Could not verify this payment reference'); return }
 
     const user = await prisma.user.update({
       where: { id: userId },
@@ -2936,6 +3054,103 @@ export async function legacyPaystackResult(req: Request, res: Response) {
   res.send(`
     <html><body style="font-family:sans-serif;text-align:center;padding-top:60px;">
       <h2>${status === 'success' ? 'Payment successful' : 'Payment failed'}</h2>
+      <p>You may close this window.</p>
+    </body></html>
+  `)
+}
+
+// ─── FLUTTERWAVE PAYMENT (booking + wallet top-up) ───────────────────────────
+//
+// flwInitialize()/flwVerifyByRef()/flwVerifyById() in lib/flutterwave.ts were
+// already fully built (legacyBookSeat above already calls the verify
+// functions as a fallback after Paystack) — but no route ever actually
+// exercised the init/callback half of the flow. The Flutter app instead
+// opened a raw GET URL (flutterwave/index.php?amt=...&email=...) directly in
+// its WebView with no matching backend route at all (404) and no auth
+// header (WebView-initiated navigation never carries the app's Bearer
+// token), and worse, would have trusted a client-supplied amount outright
+// had that route existed. Mirrors legacyPaystackInit/Callback/Result exactly:
+// an authenticated POST init (server decides the amount from its own
+// records, never the client's), then a public GET callback Flutterwave
+// itself redirects to after checkout.
+export async function legacyFlutterwaveInit(req: Request, res: Response) {
+  try {
+    const userId = req.user.id
+    const { email, amount } = req.body
+    if (!email || !amount) { fail(res, 'email and amount required'); return }
+
+    const amt = parseFloat(amount)
+    if (!Number.isFinite(amt) || amt <= 0) { fail(res, 'Invalid amount'); return }
+
+    const settings = await prisma.platformSettings.findUnique({ where: { id: 1 } })
+    const secretKey = settings?.flutterwaveSecretKey || undefined
+    if (!secretKey && !process.env.FLUTTERWAVE_SECRET_KEY) {
+      console.error('legacyFlutterwaveInit: no Flutterwave secret key configured (PlatformSettings.flutterwaveSecretKey and FLUTTERWAVE_SECRET_KEY env var both empty)')
+      res.json({ status: false, message: 'Card payment is not configured yet — contact support.' })
+      return
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { name: true, mobile: true } })
+    const txRef = flwTxRef('CCR')
+    const result = await flwInitialize({
+      email,
+      name:        user?.name ?? 'CC Ride user',
+      phone:       user?.mobile ?? '',
+      amountNGN:   amt,
+      txRef,
+      redirectUrl: `${CCRIDE_API_BASE}/flutterwave_callback.php`,
+      description: 'CC Ride payment',
+      meta:        { uid: userId, amount: amt },
+      secretKey,
+    })
+
+    res.json({
+      status: true,
+      data: {
+        authorization_url: result.payment_link,
+        reference:          result.tx_ref,
+      },
+    })
+  } catch (err) {
+    console.error('legacyFlutterwaveInit:', err)
+    const status = (err as { response?: { status?: number } })?.response?.status
+    const message = status === 401 || status === 403
+      ? 'Card payment is temporarily unavailable — the payment provider rejected our credentials. Contact support.'
+      : 'Unable to initiate Flutterwave payment'
+    res.json({ status: false, message })
+  }
+}
+
+export async function legacyFlutterwaveCallback(req: Request, res: Response) {
+  const txRef = req.query.tx_ref as string | undefined
+  const transactionId = req.query.transaction_id as string | undefined
+  if (!txRef && !transactionId) {
+    res.redirect(302, `${CCRIDE_API_BASE}/flutterwave_result.php?status=failed`)
+    return
+  }
+
+  try {
+    const settings = await prisma.platformSettings.findUnique({ where: { id: 1 } })
+    const secretKey = settings?.flutterwaveSecretKey || undefined
+    const result = transactionId
+      ? await flwVerifyById(Number(transactionId), secretKey)
+      : await flwVerifyByRef(txRef!, secretKey)
+    const success = result.status === 'successful'
+    res.redirect(
+      302,
+      `${CCRIDE_API_BASE}/flutterwave_result.php?status=${success ? 'successful' : 'failed'}&transaction_id=${encodeURIComponent(String(result.id))}`,
+    )
+  } catch (err) {
+    console.error('legacyFlutterwaveCallback:', err)
+    res.redirect(302, `${CCRIDE_API_BASE}/flutterwave_result.php?status=failed`)
+  }
+}
+
+export async function legacyFlutterwaveResult(req: Request, res: Response) {
+  const status = req.query.status === 'successful' ? 'successful' : 'failed'
+  res.send(`
+    <html><body style="font-family:sans-serif;text-align:center;padding-top:60px;">
+      <h2>${status === 'successful' ? 'Payment successful' : 'Payment failed'}</h2>
       <p>You may close this window.</p>
     </body></html>
   `)
@@ -3240,6 +3455,32 @@ export async function legacyFaq(req: Request, res: Response) {
   }
 }
 
+// ─── ADVERTS (home-screen swipeable carousel) ────────────────────────────────
+
+export async function legacyListAdverts(req: Request, res: Response) {
+  try {
+    const adverts = await prisma.advert.findMany({
+      where: { isActive: true },
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
+      take: 20,
+    })
+    ok(res, {
+      Data: adverts.map(a => ({
+        id:        a.id,
+        // Same leading-slash strip as picUrl elsewhere in this file —
+        // Confing.imageurl already ends in "/", a stored "/api/uploads/..."
+        // path would double up into a 404ing "//api/uploads/...".
+        image_url: a.imageUrl.startsWith('/') ? a.imageUrl.slice(1) : a.imageUrl,
+        title:     a.title,
+        body:      a.body ?? '',
+        link_url:  a.linkUrl ?? '',
+      })),
+    })
+  } catch (err) {
+    console.error('legacyListAdverts:', err); fail(res, 'Server error')
+  }
+}
+
 // POST /admin/faqs/reseed — super-admin only. legacyFaq above only seeds
 // once, the first time the table is ever empty, so editing FAQ_SEED_DATA in
 // this file has no effect on an already-seeded production database. This
@@ -3284,15 +3525,21 @@ export async function legacyPageList(req: Request, res: Response) {
 export async function legacyPaymentGateway(req: Request, res: Response) {
   try {
     const settings = await prisma.platformSettings.findUnique({ where: { id: 1 } })
-    ok(res, {
-      PaymentData: [
-        {
-          id: '1', title: 'Paystack', status: '1',
-          public_key: settings?.paystackPublicKey ?? '',
-          gateway_type: 'paystack',
-        },
-      ],
-    })
+    // payment_bottomsheert.dart has working branches for Paystack (matched
+    // by gateway_type), Flutterwave (matched by gateway_type) and Wallet
+    // (matched by id == '16') — this endpoint used to hardcode only
+    // Paystack, so those branches were unreachable dead code and the
+    // options never appeared in the sheet at all. Paystack/Flutterwave are
+    // only listed if actually configured; Wallet always is.
+    const PaymentData: Array<{ id: string; title: string; status: string; public_key: string; gateway_type: string }> = []
+    if (settings?.paystackPublicKey) {
+      PaymentData.push({ id: '1', title: 'Paystack', status: '1', public_key: settings.paystackPublicKey, gateway_type: 'paystack' })
+    }
+    if (settings?.flutterwavePublicKey) {
+      PaymentData.push({ id: '7', title: 'Flutterwave', status: '1', public_key: settings.flutterwavePublicKey, gateway_type: 'flutterwave' })
+    }
+    PaymentData.push({ id: '16', title: 'Wallet', status: '1', public_key: '', gateway_type: 'wallet' })
+    ok(res, { PaymentData })
   } catch (err) {
     console.error('legacyPaymentGateway:', err); fail(res, 'Server error')
   }
