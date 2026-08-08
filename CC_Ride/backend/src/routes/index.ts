@@ -106,8 +106,11 @@ router.post('/complete_trip.php',   requireAuth, legacyCompleteTrip)
 // ─── Trip finding (passenger — guest-browsable, personalizes when logged in) ─
 router.post('/find_trip.php',       optionalAuth, legacyFindTrip)
 router.post('/nearby_routes.php',   legacyNearbyRoutes)  // public — home screen widget
-router.post('/nearby_posted_rides.php', legacyNearbyPostedRides)  // public — home screen widget
-router.post('/search_rides_by_place.php', legacySearchRidesByPlace)  // public — free-text city/place search
+// Public (Flutter sends no Authorization header on these) — optionalAuth so
+// a pool-vehicle ride can still be excluded for a signed-in-but-ineligible
+// user, while an anonymous caller sees ad-hoc/non-pool rides only.
+router.post('/nearby_posted_rides.php', optionalAuth, legacyNearbyPostedRides)  // public — home screen widget
+router.post('/search_rides_by_place.php', optionalAuth, legacySearchRidesByPlace)  // public — free-text city/place search
 
 // ─── Driver-created routes ────────────────────────────────────────────────────
 router.post('/driver_route_create.php',     requireAuth, legacyCreateDriverRoute)

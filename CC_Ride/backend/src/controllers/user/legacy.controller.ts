@@ -1222,21 +1222,49 @@ function ridePreviewShape(r: {
   }
 }
 
+// A pool-vehicle ride was previously visible to every browsing user
+// regardless of company — checkPoolRideEligibility only ever gated the
+// actual booking step, not discovery, so anyone could see (and be tempted
+// to try booking) a ride they had no access to. Filters ad-hoc rides down
+// to ones the given user (possibly anonymous) is actually allowed to see:
+// non-pool rides (vehicle.companyId null) pass through for everyone,
+// pool-vehicle rides require a signed-in, eligible user.
+async function filterVisiblePoolRides<T extends { vehicle: { companyId: string | null; branchId: bigint | null } | null }>(
+  rides: T[],
+  userId: string | undefined,
+): Promise<T[]> {
+  const visible: T[] = []
+  for (const ride of rides) {
+    const companyId = ride.vehicle?.companyId
+    if (!companyId) { visible.push(ride); continue }
+    if (!userId) continue
+    const eligibility = await checkPoolRideEligibility({
+      passengerUserId: userId,
+      poolCompanyId: companyId,
+      poolBranchId: ride.vehicle?.branchId != null ? ride.vehicle.branchId.toString() : null,
+    })
+    if (eligibility.allowed) visible.push(ride)
+  }
+  return visible
+}
+
 export async function legacyNearbyPostedRides(req: Request, res: Response) {
   try {
     const lat = parseFloat(String(req.body.lat ?? req.query.lat))
     const lng = parseFloat(String(req.body.lng ?? req.query.lng))
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) { fail(res, 'lat and lng required'); return }
 
-    const rides = await prisma.ride.findMany({
+    const allRides = await prisma.ride.findMany({
       where: {
         routeId: null,
         status: { in: ['pending', 'driver_assigned'] },
         scheduledAt: { gte: new Date() },
         availableSeats: { gt: 0 },
       },
+      include: { vehicle: { select: { companyId: true, branchId: true } } },
       take: 200, // filtered down by radius below; a generous pre-filter cap
     })
+    const rides = await filterVisiblePoolRides(allRides, req.user?.id)
 
     const tripCandidates = rides
       .map(r => ({ result: ridePreviewShape(r, distanceKm(lat, lng, Number(r.originLat), Number(r.originLng))) }))
@@ -1303,7 +1331,7 @@ export async function legacySearchRidesByPlace(req: Request, res: Response) {
 
     // Ad-hoc one-off rides ("Post a Trip", routeId null) — always a real,
     // directly bookable Ride row.
-    const rides = await prisma.ride.findMany({
+    const allRides = await prisma.ride.findMany({
       where: {
         routeId: null,
         status: { in: ['pending', 'driver_assigned'] },
@@ -1314,9 +1342,11 @@ export async function legacySearchRidesByPlace(req: Request, res: Response) {
           { destinationAddress: { contains: query, mode: 'insensitive' } },
         ],
       },
+      include: { vehicle: { select: { companyId: true, branchId: true } } },
       orderBy: { scheduledAt: 'asc' },
       take: 30,
     })
+    const rides = await filterVisiblePoolRides(allRides, req.user?.id)
 
     // Recurring driver-published Route corridors were entirely missing from
     // this search before — a rider searching "Abuja" got zero results for
