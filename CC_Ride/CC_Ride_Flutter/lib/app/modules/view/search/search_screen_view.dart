@@ -745,11 +745,30 @@ class _RideSearchBarState extends State<_RideSearchBar> {
     super.dispose();
   }
 
+  // Was a bare Timer whose callback called controller.searchRidesByPlace()
+  // with no local setState — relying entirely on the parent GetBuilder to
+  // pick up the controller's own update() call for both this field's own
+  // suffix-icon state AND the results section further down. On-device
+  // testing showed typing here never actually reached the backend at all
+  // (confirmed via zero HTTP activity in the OS-level network log after
+  // typing and waiting well past the debounce window). Rather than a
+  // Timer racing against GetBuilder rebuild timing, drive this off
+  // setState directly — deterministic regardless of what else in the
+  // widget tree is or isn't rebuilding — and also fire immediately on
+  // submit so there's a non-debounced path that doesn't depend on the
+  // timer at all.
   void _onChanged(String value) {
+    setState(() {}); // updates the clear (X) icon immediately
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 400), () {
+      if (!mounted) return;
       widget.controller.searchRidesByPlace(value);
     });
+  }
+
+  void _onSubmitted(String value) {
+    _debounce?.cancel();
+    widget.controller.searchRidesByPlace(value);
   }
 
   @override
@@ -757,6 +776,8 @@ class _RideSearchBarState extends State<_RideSearchBar> {
     return TextField(
       controller: _textController,
       onChanged: _onChanged,
+      onSubmitted: _onSubmitted,
+      textInputAction: TextInputAction.search,
       style: const TextStyle(fontFamily: 'Inter', color: ccNavyText),
       decoration: InputDecoration(
         hintText: "Search rides by city, e.g. Abuja".tr,
@@ -975,7 +996,16 @@ class _NearbyPostedRideCard extends StatelessWidget {
                 color: ccNavyText,
               ),
             ),
-            const Spacer(),
+            // Was a Spacer() — needs a bounded main-axis constraint to
+            // expand into. Fine for the fixed-width horizontal-scroller
+            // usage of this card (bounded height there), but this same
+            // card is also used full-width inside _PlaceSearchResults'
+            // plain vertical list (unbounded height) — there, the card
+            // silently rendered at zero height instead of throwing a
+            // visible overflow error, making every place-search result
+            // invisible despite the data being fetched correctly. Fixed
+            // spacing works for both usages.
+            const SizedBox(height: 10),
             Row(
               children: [
                 const Icon(Icons.schedule_rounded, size: 13, color: ccSecondaryText),

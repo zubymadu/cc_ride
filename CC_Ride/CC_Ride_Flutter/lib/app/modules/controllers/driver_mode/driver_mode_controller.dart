@@ -231,7 +231,18 @@ class DriverModeController extends GetxController {
               icon: Icons.person_outline_rounded,
               title: "Passenger",
               subtitle: "Just booking a ride",
-              onTap: () => _selectMode('passenger', null),
+              // Unlike the other two tiles, this relied solely on
+              // _selectMode's `if (Get.isBottomSheetOpen == true)
+              // Get.back()` guard to close the sheet — that check does not
+              // reliably reflect true for a bottomSheet opened with
+              // isDismissible:false/enableDrag:false, so tapping Passenger
+              // left the sheet permanently stuck open. Close it
+              // unconditionally first, exactly like Pool driver/Own-car
+              // driver already do.
+              onTap: () {
+                Get.back();
+                _selectMode('passenger', null);
+              },
             ),
             const SizedBox(height: 10),
             if (isPoolDriver) ...[
