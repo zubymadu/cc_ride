@@ -29,6 +29,8 @@ class PersonalDetailsController extends GetxController {
     dobController = TextEditingController(
         text: rawDob == null ? "" : "$rawDob".split(" ").first);
     bioController = TextEditingController(text: getData.read("userLogin")["bio"]);
+    ninController = TextEditingController(text: getData.read("userLogin")["nin"]);
+    passportController = TextEditingController(text: getData.read("userLogin")["passport_number"]);
     // passwordController = TextEditingController(text: getData.read("userLogin")["password"]);
     ccode = "${getData.read("userLogin")["ccode"]}";
     if (getData.read("userLogin")["is_driver"] != null) {
@@ -54,6 +56,8 @@ class PersonalDetailsController extends GetxController {
   TextEditingController dobController = TextEditingController();
   TextEditingController bioController = TextEditingController();
   TextEditingController passwordController = TextEditingController();
+  TextEditingController ninController = TextEditingController();
+  TextEditingController passportController = TextEditingController();
 
   final formKey = GlobalKey<FormState>();
 
@@ -159,6 +163,8 @@ class PersonalDetailsController extends GetxController {
     required String bio,
     required String password,
     required bool isDriver,
+    String nin = "",
+    String passportNumber = "",
   }) async {
     isLoading = true;
     update();
@@ -170,6 +176,8 @@ class PersonalDetailsController extends GetxController {
       "bio" : bio,
       "dob" : dob,
       "is_driver" : isDriver ? "1" : "0",
+      "nin": nin,
+      "passport_number": passportNumber,
     };
 
     String url = Confing.baseurl + Confing.profileEdit;

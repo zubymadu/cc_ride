@@ -188,6 +188,24 @@ class AddVehicleScreenView extends GetView<AddVehicleScreenController> {
                                               width: double.infinity,
                                               height: double.infinity,
                                               fit: BoxFit.cover,
+                                              // Same unguarded pattern as
+                                              // the vehicles list and
+                                              // profile photo — no photo
+                                              // on file (or a stale/404'd
+                                              // URL) rendered Flutter's
+                                              // raw unwrapped error text,
+                                              // overflowing this card.
+                                              imageErrorBuilder:
+                                                  (_, __, ___) => Container(
+                                                color: ccIceBlue,
+                                                alignment: Alignment.center,
+                                                child: const Icon(
+                                                  Icons
+                                                      .directions_car_rounded,
+                                                  color: ccPrimary,
+                                                  size: 40,
+                                                ),
+                                              ),
                                             ),
                                           )
                                         : Column(

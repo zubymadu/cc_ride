@@ -68,6 +68,8 @@ class PersonalDetailsView extends GetView<PersonalDetailsController> {
                           bio: controller.bioController.text,
                           password: controller.passwordController.text,
                           isDriver: controller.isDriver,
+                          nin: controller.ninController.text,
+                          passportNumber: controller.passportController.text,
                         );
                       });
                     } else {
@@ -79,6 +81,8 @@ class PersonalDetailsView extends GetView<PersonalDetailsController> {
                         bio: controller.bioController.text,
                         password: controller.passwordController.text,
                         isDriver: controller.isDriver,
+                        nin: controller.ninController.text,
+                        passportNumber: controller.passportController.text,
                       );
                     }
                   } else {
@@ -133,6 +137,25 @@ class PersonalDetailsView extends GetView<PersonalDetailsController> {
                                       image:
                                           "${Confing.imageurl}${getData.read("userLogin")["profile_pic"]}",
                                       fit: BoxFit.cover,
+                                      // Same unguarded pattern as the
+                                      // vehicles list — a 404'd photo
+                                      // rendered Flutter's raw error text
+                                      // with no wrap, overflowing this
+                                      // circular avatar.
+                                      imageErrorBuilder: (_, __, ___) =>
+                                          Center(
+                                        child: Text(
+                                          getData.read("userLogin")["name"][0]
+                                              .toString()
+                                              .toUpperCase(),
+                                          style: const TextStyle(
+                                            fontFamily: 'Inter',
+                                            fontSize: 36,
+                                            fontWeight: FontWeight.w700,
+                                            color: ccPrimary,
+                                          ),
+                                        ),
+                                      ),
                                     )
                               : Image.file(
                                   File(controller.selectImage!.path),
@@ -295,6 +318,31 @@ class PersonalDetailsView extends GetView<PersonalDetailsController> {
                 textInputAction: TextInputAction.done,
                 validator: (v) =>
                     (v == null || v.isEmpty) ? 'Bio is required' : null,
+              ),
+
+              // ── Identification ──────────────────────────────────────────
+              // Backend has always supported nin/passport_number (schema.
+              // prisma, and legacyRegUser accepted both at signup) but
+              // profile_edit.php never read them and no field existed here
+              // to enter/edit either after registration — optional for a
+              // passenger, only one of the two ever applies to a real
+              // person.
+              const SizedBox(height: 16),
+              _label("NIN (National ID Number)"),
+              _ProfileField(
+                hintText: "11-digit NIN, if you have one",
+                controller: controller.ninController,
+                keyboardType: TextInputType.number,
+                textInputAction: TextInputAction.next,
+              ),
+
+              const SizedBox(height: 16),
+              _label("Passport Number"),
+              _ProfileField(
+                hintText: "Enter your passport number, if you have one",
+                controller: controller.passportController,
+                keyboardType: TextInputType.text,
+                textInputAction: TextInputAction.done,
               ),
 
               // ── Driver toggle ──────────────────────────────────────────

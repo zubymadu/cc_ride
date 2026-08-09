@@ -1,3 +1,4 @@
+import 'package:carride/app/data/confing.dart';
 import 'package:carride/app/data/data_store.dart';
 import 'package:carride/app/modules/controllers/driver_mode/driver_mode_controller.dart';
 import 'package:carride/app/modules/view/advert/advert_carousel.dart';
@@ -131,6 +132,7 @@ class PostScreenView extends GetView<PostScreenController> {
                       name: "${getData.read("userLogin")?["name"] ?? ''}",
                       companyName: "${getData.read("companyName") ?? ''}",
                       employeeNumber: "${getData.read("employeeNumber") ?? ''}",
+                      companyLogo: "${getData.read("companyLogo") ?? ''}",
                     ),
                   ],
                 ],
@@ -291,10 +293,12 @@ class _PoolDriverBanner extends StatelessWidget {
     required this.name,
     required this.companyName,
     required this.employeeNumber,
+    this.companyLogo = '',
   });
   final String name;
   final String companyName;
   final String employeeNumber;
+  final String companyLogo;
 
   @override
   Widget build(BuildContext context) {
@@ -316,8 +320,27 @@ class _PoolDriverBanner extends StatelessWidget {
               color: Colors.white.withOpacity(0.15),
               shape: BoxShape.circle,
             ),
-            child: const Icon(Icons.corporate_fare_rounded,
-                color: Colors.white, size: 20),
+            // Same companyLogo data (saved at login) already renders fine
+            // on the passenger home screen's company chip — this banner
+            // just never read it, always showing the generic icon even
+            // when a real logo was available.
+            child: companyLogo.isNotEmpty
+                ? ClipOval(
+                    child: Image.network(
+                      companyLogo.startsWith('http')
+                          ? companyLogo
+                          : '${Confing.imageurl}$companyLogo',
+                      width: 40,
+                      height: 40,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => const Icon(
+                          Icons.corporate_fare_rounded,
+                          color: Colors.white,
+                          size: 20),
+                    ),
+                  )
+                : const Icon(Icons.corporate_fare_rounded,
+                    color: Colors.white, size: 20),
           ),
           const SizedBox(width: 12),
           Expanded(

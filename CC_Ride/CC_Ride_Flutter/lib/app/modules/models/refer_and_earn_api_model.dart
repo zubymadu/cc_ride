@@ -29,9 +29,15 @@ class ReferAndEarnApiModel {
         responseCode: json["ResponseCode"],
         result: json["Result"],
         responseMsg: json["ResponseMsg"],
-        code: json["code"],
-        signupcredit: json["signupcredit"],
-        refercredit: json["refercredit"],
+        // Backend (legacyReferData) sends `referral_code`/`referral_bonus` —
+        // this was reading `code`/`signupcredit`/`refercredit`, keys that
+        // never existed in the response, so every one of these rendered as
+        // the literal string "null" on screen. Backend only tracks a single
+        // bonus amount (not separate signup/refer amounts), so both map to
+        // the same value.
+        code: json["referral_code"],
+        signupcredit: "${json["referral_bonus"] ?? ''}",
+        refercredit: "${json["referral_bonus"] ?? ''}",
     );
 
     Map<String, dynamic> toJson() => {

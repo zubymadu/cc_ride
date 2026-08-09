@@ -135,130 +135,186 @@ class VehiclesListView extends GetView<VehiclesListController> {
                                         CCRadius.card),
                                     boxShadow: CCShadow.card,
                                   ),
-                                  child: Row(
+                                  child: Column(
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
-                                      // ── Vehicle info ──────────────────
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            // modelTitle had no overflow
-                                            // guard at all — a long vehicle
-                                            // model name would wrap onto
-                                            // multiple lines instead of
-                                            // truncating, pushing the rest of
-                                            // the card's content down out of
-                                            // alignment with the fixed
-                                            // 90x90 photo beside it (the
-                                            // "doesn't render well" symptom).
-                                            Text(
-                                              "${v.modelTitle}",
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: CCText.titleMd,
-                                            ),
-                                            const SizedBox(height: 4),
-                                            Text(
-                                              "${v.year} · ${v.colorTitle} · ${v.typeTitle}",
-                                              maxLines: 1,
-                                              overflow:
-                                                  TextOverflow.ellipsis,
-                                              style: CCText.bodyMd.copyWith(
-                                                  color: ccSecondaryText),
-                                            ),
-                                            const SizedBox(height: 10),
-                                            // Approved badge
-                                            Container(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
+                                      Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          // ── Vehicle info ──────────────
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                // modelTitle had no overflow
+                                                // guard at all — a long
+                                                // vehicle model name would
+                                                // wrap onto multiple lines
+                                                // instead of truncating,
+                                                // pushing the rest of the
+                                                // card's content down out of
+                                                // alignment with the fixed
+                                                // 90x90 photo beside it.
+                                                Text(
+                                                  "${v.modelTitle}",
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style: CCText.titleMd,
+                                                ),
+                                                const SizedBox(height: 4),
+                                                Text(
+                                                  "${v.year} · ${v.colorTitle} · ${v.typeTitle}",
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style: CCText.bodyMd
+                                                      .copyWith(
+                                                          color:
+                                                              ccSecondaryText),
+                                                ),
+                                                const SizedBox(height: 10),
+                                                // Approved badge — the
+                                                // "Approved" Text had no
+                                                // overflow guard, so at
+                                                // larger system font-scale
+                                                // settings it could push
+                                                // this Row wider than the
+                                                // card, causing a genuine
+                                                // RenderFlex overflow.
+                                                Container(
+                                                  padding: const EdgeInsets
+                                                      .symmetric(
                                                       horizontal: 10,
                                                       vertical: 4),
-                                              decoration: BoxDecoration(
-                                                color: ccSuccessLight,
-                                                borderRadius:
-                                                    BorderRadius.circular(
-                                                        99),
-                                              ),
-                                              child: Row(
-                                                mainAxisSize:
-                                                    MainAxisSize.min,
-                                                children: [
-                                                  const Icon(
-                                                      Icons
-                                                          .check_circle_rounded,
-                                                      color: ccSuccess,
-                                                      size: 14),
-                                                  const SizedBox(width: 4),
-                                                  const Text(
-                                                    "Approved",
-                                                    style: TextStyle(
-                                                      fontFamily: 'Inter',
-                                                      fontSize: 12,
-                                                      fontWeight:
-                                                          FontWeight.w600,
-                                                      color: ccSuccess,
-                                                    ),
+                                                  decoration: BoxDecoration(
+                                                    color: ccSuccessLight,
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            99),
                                                   ),
-                                                ],
-                                              ),
-                                            ),
-                                            const SizedBox(height: 12),
-                                            OutlinedButton(
-                                              onPressed: () =>
-                                                  Get.toNamed(
-                                                Routes.ADD_VEHICLE_SCREEN,
-                                                arguments: editArgs,
-                                              ),
-                                              style:
-                                                  OutlinedButton.styleFrom(
-                                                foregroundColor: ccPrimary,
-                                                side: const BorderSide(
-                                                    color: ccPrimary),
-                                                shape:
-                                                    RoundedRectangleBorder(
-                                                  borderRadius:
-                                                      BorderRadius.circular(
-                                                          CCRadius.btn),
+                                                  child: Row(
+                                                    mainAxisSize:
+                                                        MainAxisSize.min,
+                                                    children: [
+                                                      const Icon(
+                                                          Icons
+                                                              .check_circle_rounded,
+                                                          color: ccSuccess,
+                                                          size: 14),
+                                                      const SizedBox(
+                                                          width: 4),
+                                                      Flexible(
+                                                        child: Text(
+                                                          "Approved",
+                                                          maxLines: 1,
+                                                          overflow:
+                                                              TextOverflow
+                                                                  .ellipsis,
+                                                          style: const TextStyle(
+                                                            fontFamily:
+                                                                'Inter',
+                                                            fontSize: 12,
+                                                            fontWeight:
+                                                                FontWeight
+                                                                    .w600,
+                                                            color: ccSuccess,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
                                                 ),
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                        horizontal: 14,
-                                                        vertical: 8),
-                                                tapTargetSize:
-                                                    MaterialTapTargetSize
-                                                        .shrinkWrap,
-                                              ),
-                                              child: const Row(
-                                                mainAxisSize:
-                                                    MainAxisSize.min,
-                                                children: [
-                                                  Icon(Icons.edit_rounded,
-                                                      size: 14),
-                                                  SizedBox(width: 6),
-                                                  Text("Edit Details"),
-                                                ],
+                                              ],
+                                            ),
+                                          ),
+                                          const SizedBox(width: 12),
+                                          // ── Vehicle photo ─────────────
+                                          ClipRRect(
+                                            borderRadius:
+                                                BorderRadius.circular(10),
+                                            child: FadeInImage.assetNetwork(
+                                              height: 90,
+                                              width: 90,
+                                              fit: BoxFit.cover,
+                                              placeholder:
+                                                  "assets/image/ezgif.com-crop.gif",
+                                              placeholderFit: BoxFit.cover,
+                                              image:
+                                                  "${Confing.imageurl}${v.photo}",
+                                              // Had no error handling at
+                                              // all — a 404'd vehicle photo
+                                              // (e.g. no photo ever
+                                              // uploaded) fell through to
+                                              // Flutter's default error
+                                              // widget, an un-wrapped raw
+                                              // "HTTP request failed,
+                                              // statusCode: 404, https://…"
+                                              // Text with no ellipsis,
+                                              // which overflowed straight
+                                              // out of the fixed 90x90 box
+                                              // and off the card.
+                                              imageErrorBuilder:
+                                                  (_, __, ___) => Container(
+                                                color: ccIceBlue,
+                                                alignment: Alignment.center,
+                                                child: const Icon(
+                                                  Icons
+                                                      .directions_car_rounded,
+                                                  color: ccPrimary,
+                                                  size: 32,
+                                                ),
                                               ),
                                             ),
-                                          ],
-                                        ),
+                                          ),
+                                        ],
                                       ),
-                                      const SizedBox(width: 12),
-                                      // ── Vehicle photo ─────────────────
-                                      ClipRRect(
-                                        borderRadius:
-                                            BorderRadius.circular(10),
-                                        child: FadeInImage.assetNetwork(
-                                          height: 90,
-                                          width: 90,
-                                          fit: BoxFit.cover,
-                                          placeholder:
-                                              "assets/image/ezgif.com-crop.gif",
-                                          placeholderFit: BoxFit.cover,
-                                          image:
-                                              "${Confing.imageurl}${v.photo}",
+                                      const SizedBox(height: 12),
+                                      // "Edit Details" used to be crammed
+                                      // into the same narrow Expanded
+                                      // column as the badge, next to the
+                                      // fixed 90x90 photo — full-width
+                                      // below both keeps the card's height
+                                      // consistent regardless of how much
+                                      // text/badge content is above it.
+                                      SizedBox(
+                                        width: double.infinity,
+                                        child: OutlinedButton(
+                                          onPressed: () => Get.toNamed(
+                                            Routes.ADD_VEHICLE_SCREEN,
+                                            arguments: editArgs,
+                                          ),
+                                          style: OutlinedButton.styleFrom(
+                                            foregroundColor: ccPrimary,
+                                            side: const BorderSide(
+                                                color: ccPrimary),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(
+                                                      CCRadius.btn),
+                                            ),
+                                            padding: const EdgeInsets
+                                                .symmetric(
+                                                horizontal: 14,
+                                                vertical: 8),
+                                            tapTargetSize:
+                                                MaterialTapTargetSize
+                                                    .shrinkWrap,
+                                          ),
+                                          child: const Row(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(Icons.edit_rounded,
+                                                  size: 14),
+                                              SizedBox(width: 6),
+                                              Text("Edit Details"),
+                                            ],
+                                          ),
                                         ),
                                       ),
                                     ],

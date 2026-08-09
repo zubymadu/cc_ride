@@ -4,6 +4,7 @@
  * works without the original PHP backend.
  */
 import { Request, Response } from 'express'
+import crypto from 'crypto'
 import jwt from 'jsonwebtoken'
 import bcrypt from 'bcryptjs'
 import { prisma } from '../../lib/prisma'
@@ -233,6 +234,8 @@ function userLoginShape(user: any) {
     // both were correctly persisted server-side all along.
     dob:              user.dateOfBirth ? user.dateOfBirth.toISOString().split('T')[0] : '',
     bio:              user.bio ?? '',
+    nin:              user.nin ?? '',
+    passport_number:  user.passportNumber ?? '',
     wallet:           Number(user.walletBalance),
     is_driver:        user.isDriver ? '1' : '0',
     status:           user.status,
@@ -555,7 +558,7 @@ export async function legacyUserProfile(req: Request, res: Response) {
 export async function legacyProfileEdit(req: Request, res: Response) {
   try {
     const userId = req.user.id
-    const { name, email, bio, dob } = req.body
+    const { name, email, bio, dob, nin, passport_number } = req.body
     const file = (req as any).file as { filename?: string } | undefined
     const updateData: any = {}
     if (name)  updateData.name  = String(name).trim()
@@ -568,6 +571,12 @@ export async function legacyProfileEdit(req: Request, res: Response) {
     }
     if (bio)   updateData.bio   = String(bio).trim()
     if (dob && dob !== 'null' && dob !== '') updateData.dateOfBirth = new Date(dob)
+    // Same "exactly one of the two" rule as registration — only reject if
+    // BOTH are being set here; leaving one blank to keep the other already
+    // on file is fine.
+    if (nin && passport_number) { fail(res, 'Provide either a NIN or a passport number, not both'); return }
+    if (nin) updateData.nin = String(nin).trim()
+    if (passport_number) updateData.passportNumber = String(passport_number).trim()
     if (file?.filename) updateData.profilePicUrl = `/api/uploads/profiles/${file.filename}`
 
     const user = await prisma.user.update({ where: { id: userId }, data: updateData })
@@ -575,7 +584,12 @@ export async function legacyProfileEdit(req: Request, res: Response) {
       Result: 'true', ResponseMsg: 'Profile updated',
       UserLogin: userLoginShape(user),
     })
-  } catch (err) {
+  } catch (err: any) {
+    if (err.code === 'P2002') {
+      const field = err?.meta?.target?.[0]
+      if (field === 'nin') { fail(res, 'An account already exists with this NIN'); return }
+      if (field === 'passport_number') { fail(res, 'An account already exists with this passport number'); return }
+    }
     console.error('legacyProfileEdit:', err); fail(res, 'Server error')
   }
 }
@@ -3625,7 +3639,17 @@ export async function legacyReferData(req: Request, res: Response) {
   try {
     const userId = uid(req)
     if (!userId) { fail(res, 'uid required'); return }
-    const user = await prisma.user.findUnique({ where: { id: userId } })
+    let user = await prisma.user.findUnique({ where: { id: userId } })
+    // Ordinary registration (legacyRegUser) never assigned a referralCode —
+    // only the corporate employee-registration flow does — so this screen
+    // showed a blank/null code for most users. Generate one lazily on first
+    // visit rather than requiring a backfill migration.
+    if (user && !user.referralCode) {
+      user = await prisma.user.update({
+        where: { id: userId },
+        data: { referralCode: crypto.randomBytes(4).toString('hex').toUpperCase() },
+      })
+    }
     const settings = await prisma.platformSettings.findUnique({ where: { id: 1 } })
     ok(res, {
       referral_code: user?.referralCode ?? '',
