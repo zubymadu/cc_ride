@@ -5,6 +5,7 @@ import corporateRouter from './corporate'
 import adminRouter from './admin'
 import paymentRouter from './payment'
 import userRouter from './user'
+import { submitWaitlist } from '../controllers/public/waitlist.controller'
 import { requireAuth, optionalAuth } from '../middleware/auth'
 import {
   legacyLogin, legacyMobileCheck, legacyEmailCheck, legacySmsType, legacyRegUser,
@@ -162,6 +163,9 @@ router.post('/paymentgateway.php',   legacyPaymentGateway)
 router.get('/paymentgateway.php',    legacyPaymentGateway)
 router.post('/u_check_coupon.php',   requireAuth, legacyCheckCoupon)
 router.post('/u_couponlist.php',     requireAuth, legacyCouponList)
+
+// ─── Public marketing site (ccride.ng) — waitlist / org / investor interest ───
+router.post('/waitlist', submitWaitlist)
 
 // ─── Catchall for any remaining *.php ─────────────────────────────────────────
 router.all(/^\/[\w-]+\.php$/, legacyFallback)

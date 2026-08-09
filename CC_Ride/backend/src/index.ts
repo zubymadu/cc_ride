@@ -63,7 +63,14 @@ io.on('connection', (socket) => {
 // ─── Middleware ───────────────────────────────────────────────────────────────
 app.set('trust proxy', 1) // trust nginx reverse proxy
 app.use(helmet())
-app.use(cors({ origin: [process.env.FRONTEND_URL ?? '*', process.env.ADMIN_URL ?? '*'] }))
+app.use(cors({
+  origin: [
+    process.env.FRONTEND_URL ?? '*',
+    process.env.ADMIN_URL ?? '*',
+    'https://ccride.ng',
+    'https://www.ccride.ng',
+  ],
+}))
 app.use(express.json({ limit: '2mb' }))
 app.use(express.urlencoded({ extended: true }))
 
