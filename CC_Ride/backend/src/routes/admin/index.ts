@@ -58,6 +58,7 @@ import {
 import { deleteWalletTransaction, deletePayoutRequest } from '../../controllers/admin/financeHousekeeping.controller'
 import { reseedFaqs } from '../../controllers/user/legacy.controller'
 import { listAdverts, createAdvert, updateAdvert, deleteAdvert } from '../../controllers/admin/adverts.controller'
+import { listWaitlistSubmissions, deleteWaitlistSubmission } from '../../controllers/admin/waitlist.controller'
 
 const logoUpload = multer({
   dest: '/app/uploads/profiles/',
@@ -264,5 +265,9 @@ router.get('/adverts',       requireSuperAdmin, listAdverts)
 router.post('/adverts',      requireSuperAdmin, advertUpload.single('image'), createAdvert)
 router.patch('/adverts/:id', requireSuperAdmin, updateAdvert)
 router.delete('/adverts/:id', requireSuperAdmin, deleteAdvert)
+
+// ccride.ng waitlist/organisation/investor interest submissions — platform-wide, super-admin only.
+router.get('/waitlist',       requireSuperAdmin, listWaitlistSubmissions)
+router.delete('/waitlist/:id', requireSuperAdmin, deleteWaitlistSubmission)
 
 export default router

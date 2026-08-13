@@ -2,15 +2,17 @@ import { Request, Response } from 'express'
 import fs from 'fs'
 import path from 'path'
 import { z } from 'zod'
+import { prisma } from '../../lib/prisma'
 import { sendMail } from '../../lib/mail'
 import { ok, fail, serverError } from '../../lib/response'
 
 const NOTIFY_TO = 'hello@equiviral.com, hello@ccride.ng'
 
 // SMTP is opt-in (PlatformSettings) and silently no-ops when unconfigured
-// (see lib/mail.ts) — for a public marketing-site form, a lost submission
-// is a lost lead, so every submission is also appended to a local log file
-// as a backup regardless of whether the email actually sends.
+// (see lib/mail.ts) — the DB row (below) is now the real source of truth
+// for browsing submissions in the admin panel; email is just a
+// nice-to-have nudge, and the JSONL file is kept as a last-resort backup
+// in case the DB write itself somehow fails.
 const LOG_PATH = path.join('/app/uploads', 'waitlist-submissions.jsonl')
 
 const WaitlistSchema = z.object({
@@ -30,6 +32,16 @@ const TYPE_LABEL: Record<string, string> = {
 export async function submitWaitlist(req: Request, res: Response) {
   try {
     const data = WaitlistSchema.parse(req.body)
+
+    await prisma.waitlistSubmission.create({
+      data: {
+        type: data.type,
+        name: data.name,
+        email: data.email,
+        organisation: data.organisation || null,
+        message: data.message || null,
+      },
+    })
 
     const entry = { ...data, submittedAt: new Date().toISOString() }
     try {

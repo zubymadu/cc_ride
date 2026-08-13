@@ -365,6 +365,30 @@ model Advert {
   @@map("adverts")
 }
 
+enum WaitlistSubmissionType {
+  general
+  organisation
+  investor
+}
+
+// ccride.ng's public waitlist/pilot-interest form (see waitlist.controller.ts)
+// — used to only be appended to a JSONL log file on disk as a backup for
+// when SMTP isn't configured, with no way to browse submissions short of
+// SSHing into the server. This is now the real source of truth; the admin
+// panel reads from here.
+model WaitlistSubmission {
+  id           String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  type         WaitlistSubmissionType
+  name         String
+  email        String
+  organisation String?
+  message      String?
+  createdAt    DateTime                @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("waitlist_submissions")
+}
+
 model ApiRateLimit {
   id            BigInt    @id @default(autoincrement())
   identifier    String
